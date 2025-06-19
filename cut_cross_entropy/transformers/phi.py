@@ -1,4 +1,4 @@
-"""Phi3 CCE patch. Phi3 inherits Mistral which inherits Llama. Adapted from transformers 4.52.4."""
+"""Phi CCE patch. Phi inherits Llama. Adapted from transformers 4.52.4."""
 
 from types import MethodType
 
@@ -9,7 +9,7 @@ from cut_cross_entropy.transformers.utils import (
 )
 
 
-def patch_phi3(
+def patch_phi(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
 ) -> TransformersModelT | None:
@@ -20,14 +20,14 @@ def patch_phi3(
 
     cce_forward = llama_patch.cce_forward
 
-    from transformers.models.phi3 import modeling_phi3
+    from transformers.models.phi import modeling_phi
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(
-            maybe_model, modeling_phi3.Phi3ForCausalLM
-        ), f"Expected a Phi3ForCausalLM model. Got {type(maybe_model)}."
+            maybe_model, modeling_phi.PhiForCausalLM
+        ), f"Expected a PhiForCausalLM model. Got {type(maybe_model)}."
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
-    modeling_phi3.Phi3ForCausalLM.forward = cce_forward
+    modeling_phi.PhiForCausalLM.forward = cce_forward
     return None

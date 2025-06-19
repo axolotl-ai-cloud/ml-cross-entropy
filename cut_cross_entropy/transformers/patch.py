@@ -12,8 +12,12 @@ from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
 from .glm4 import patch_glm, patch_glm4
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
-from .mistral3 import patch_mistral, patch_mistral3
+from .mistral import patch_mistral
+from .mistral3 import patch_mistral3
 from .mllama import patch_mllama
+from .phi import patch_phi
+from .phi3 import patch_phi3
+from .phi4_multimodal import patch_phi4_multimodal
 from .qwen2 import patch_qwen2
 from .qwen2_5_vl import patch_qwen2_5_vl
 from .qwen2_moe import patch_qwen2_moe
@@ -28,7 +32,9 @@ PATCH_FNS = {
     "llama4": patch_llama4,
     "llama4_text": patch_llama4_text,
     "mllama": patch_mllama,
-    # "phi3": patch_phi3,
+    "phi": patch_phi,
+    "phi3": patch_phi3,
+    "phi4_multimodal": patch_phi4_multimodal,
     "gemma": patch_gemma,
     "gemma2": patch_gemma2,
     "gemma3": patch_gemma3,
