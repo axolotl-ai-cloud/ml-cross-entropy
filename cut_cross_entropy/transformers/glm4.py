@@ -1,4 +1,4 @@
-"""GLM 4 patch. GLM family inherits from Llama."""
+"""GLM 4 patch. GLM family inherits from Llama. Adapted from transformers 4.52.4."""
 
 from types import MethodType
 

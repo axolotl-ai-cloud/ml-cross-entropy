@@ -1,6 +1,4 @@
-"""Gemma CCE patch. Gemma inherits from llama."""
-
-# This patch is based off transformers 4.52.4.
+"""Gemma CCE patch. Gemma inherits from llama. Adapted from transformers 4.52.4."""
 
 from types import MethodType
 

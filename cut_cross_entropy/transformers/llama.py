@@ -1,6 +1,5 @@
 """Llama CCE patch. Adapted from transformers v4.52.4"""
 
-
 from types import MethodType
 from typing import Optional, Union
 

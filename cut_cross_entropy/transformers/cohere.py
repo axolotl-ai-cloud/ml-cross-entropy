@@ -1,8 +1,6 @@
-"""Cohere and Cohere2 CCE patch."""
+"""Cohere and Cohere2 CCE patch. Adapted from transformers 4.52.4."""
 
-# This patch is based off transformers 4.52.4.
-# It patches the forward function for CohereForCausalLM and Cohere2ForCausalLM.
-# It scales the hidden states by the logit scale in advance instead of the logits as the
+# Patch scales the hidden states by the logit scale in advance instead of the logits as the
 # operation is done internally and should be mathematically equivalent.
 
 from types import MethodType
