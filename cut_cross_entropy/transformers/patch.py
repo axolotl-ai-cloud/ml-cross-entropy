@@ -27,6 +27,8 @@ from .qwen3_moe import patch_qwen3_moe
 
 from .utils import PatchOptions, TransformersModelT
 
+AXOLOTL_CCE_FORK = 1
+
 PATCH_FNS = {
     "llama": patch_llama,
     "llama4": patch_llama4,
