@@ -40,3 +40,5 @@ my_scripts/
 .autoenv*.zsh
 
 .model_cache/
+
+venv/

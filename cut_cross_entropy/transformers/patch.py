@@ -1,30 +1,56 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 from typing import overload
 
-import transformers
+from transformers import PreTrainedModel, PretrainedConfig
 
 from cut_cross_entropy.cce_utils import LinearCrossEntropyImpl
 from cut_cross_entropy.linear_cross_entropy import LCE_IMPL_DEFAULT
 
-from .gemma2 import patch_gemma2
+from .cohere import patch_cohere, patch_cohere2
+from .gemma import patch_gemma
+from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
+from .glm4 import patch_glm, patch_glm4
 from .llama import patch_llama
-from .mistral import patch_mistral
-from .phi3 import patch_phi3
+from .llama4 import patch_llama4, patch_llama4_text
+from .mistral3 import patch_mistral, patch_mistral3
+from .mllama import patch_mllama
 from .qwen2 import patch_qwen2
+from .qwen2_5_vl import patch_qwen2_5_vl
+from .qwen2_moe import patch_qwen2_moe
+from .qwen2_vl import patch_qwen2_vl
+from .qwen3 import patch_qwen3
+from .qwen3_moe import patch_qwen3_moe
+
 from .utils import PatchOptions, TransformersModelT
 
 PATCH_FNS = {
     "llama": patch_llama,
-    "phi3": patch_phi3,
+    "llama4": patch_llama4,
+    "llama4_text": patch_llama4_text,
+    "mllama": patch_mllama,
+    # "phi3": patch_phi3,
+    "gemma": patch_gemma,
     "gemma2": patch_gemma2,
+    "gemma3": patch_gemma3,
+    "gemma3_text": patch_gemma3_text,
     "mistral": patch_mistral,
+    "mistral3": patch_mistral3,
     "qwen2": patch_qwen2,
+    "qwen2_moe": patch_qwen2_moe,
+    "qwen2_vl": patch_qwen2_vl,
+    "qwen2_5_vl": patch_qwen2_5_vl,
+    "qwen3": patch_qwen3,
+    "qwen3_moe": patch_qwen3_moe,
+    "cohere": patch_cohere,
+    "cohere2": patch_cohere2,
+    "glm": patch_glm,
+    "glm4": patch_glm4,
 }
 
 
 @overload
 def cce_patch(
-    model_type_or_model: str | transformers.PretrainedConfig,
+    model_type_or_model: str | PretrainedConfig,
     impl: str | LinearCrossEntropyImpl = LCE_IMPL_DEFAULT,
     reduction: str = "mean",
     filter_eps: float | str | None = "auto",
@@ -51,7 +77,7 @@ def cce_patch(
 
 
 def cce_patch(
-    model_type_or_model: str | TransformersModelT | transformers.PretrainedConfig,
+    model_type_or_model: str | TransformersModelT | PretrainedConfig,
     impl: str | LinearCrossEntropyImpl = LCE_IMPL_DEFAULT,
     reduction: str = "mean",
     filter_eps: float | str | None = "auto",
@@ -67,9 +93,14 @@ def cce_patch(
     if impl not in (v.name.lower() for v in LinearCrossEntropyImpl):
         raise ValueError(f"Unknown {impl=}")
 
-    if isinstance(model_type_or_model, transformers.PreTrainedModel):
-        model_type = model_type_or_model.config.model_type
-    elif isinstance(model_type_or_model, transformers.PretrainedConfig):
+    if isinstance(model_type_or_model, PreTrainedModel):
+        if hasattr(model_type_or_model, "config"):
+            model_type = model_type_or_model.config.model_type
+        else:
+            raise ValueError(
+                "model_type_or_model is a PreTrainedModel but does not have a config attribute"
+            )
+    elif isinstance(model_type_or_model, PretrainedConfig):
         model_type = model_type_or_model.model_type
     else:
         model_type = model_type_or_model

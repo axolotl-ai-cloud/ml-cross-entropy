@@ -1,4 +1,6 @@
-"""Qwen2 CCE patch. Qwen2 inherits Llama. Adapted from transformers 4.52.4."""
+"""Gemma CCE patch. Gemma inherits from llama."""
+
+# This patch is based off transformers 4.52.4.
 
 from types import MethodType
 
@@ -9,7 +11,7 @@ from cut_cross_entropy.transformers.utils import (
 )
 
 
-def patch_qwen2(
+def patch_gemma(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
 ) -> TransformersModelT | None:
@@ -20,14 +22,14 @@ def patch_qwen2(
 
     cce_forward = llama_patch.cce_forward
 
-    from transformers.models.qwen2 import modeling_qwen2
+    from transformers.models.gemma import modeling_gemma
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(
-            maybe_model, modeling_qwen2.Qwen2ForCausalLM
-        ), f"Expected a Qwen2ForCausalLM model. Got {type(maybe_model)}."
+            maybe_model, modeling_gemma.GemmaForCausalLM
+        ), f"Expected a GemmaForCausalLM model. Got {type(maybe_model)}."
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
-    modeling_qwen2.Qwen2ForCausalLM.forward = cce_forward
+    modeling_gemma.GemmaForCausalLM.forward = cce_forward
     return None
