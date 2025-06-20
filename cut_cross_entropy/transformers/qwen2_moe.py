@@ -132,7 +132,7 @@ def patch_qwen2_moe(
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(
             maybe_model, modeling_qwen2_moe.Qwen2MoeForCausalLM
-        ), f"Expected a Qwen3MoeForCausalLM model. Got {type(maybe_model)}."
+        ), f"Expected a Qwen2MoeForCausalLM model. Got {type(maybe_model)}."
         maybe_model.forward = MethodType(cce_forward, maybe_model)
 
         return maybe_model
