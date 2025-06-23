@@ -159,7 +159,8 @@ def cce_forward_multimodal(
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
-            softcap=getattr(self.config, "final_logit_softcapping", None),
+            # do not pass softcap because it is not used in VLM loss calculation
+            # softcap=getattr(self.config, "final_logit_softcapping", None),
             **lm_kwargs,
         )
     else:
