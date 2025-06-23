@@ -14,7 +14,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 
 _PATCH_OPTS: PatchOptions | None = None
 
-def cce_forward(
+def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
@@ -103,9 +103,9 @@ def patch_phi4_multimodal(
             maybe_model, modeling_phi4_multimodal.Phi4MultimodalForCausalLM
         ), f"Expected a Phi4MultimodalForCausalLM model. Got {type(maybe_model)}."
 
-        maybe_model.forward = MethodType(cce_forward, maybe_model)
+        maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
         return maybe_model
 
 
-    modeling_phi4_multimodal.Phi4MultimodalForCausalLM.forward = cce_forward
+    modeling_phi4_multimodal.Phi4MultimodalForCausalLM.forward = cce_forward_multimodal
     return None
