@@ -160,7 +160,7 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
-        return_dict=True,
+        # return_dict=True,  # will cause multiple return_dict error in self.model forward
         **lm_kwargs,
     )
 
