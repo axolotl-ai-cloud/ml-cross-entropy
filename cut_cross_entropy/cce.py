@@ -146,7 +146,7 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
         params = cast(CCEParams, ctx.params)
         reduction = params.reduction
         if reduction == "mean":
-            grad_scale = 1 / lse.numel()
+            grad_scale = 1 / lse.numel() if lse.numel() else 1.0
         elif reduction == "sum":
             grad_scale = 1.0
         elif reduction == "none":
