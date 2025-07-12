@@ -27,11 +27,17 @@ from cut_cross_entropy.transformers.utils import (
     apply_lce,
 )
 from transformers.models.qwen3_moe.modeling_qwen3_moe import (
-    KwargsForCausalLM,
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
     load_balancing_loss_func,
 )
+try:
+    from transformers.models.qwen3_moe.modeling_qwen3_moe import (
+        KwargsForCausalLM,
+    )
+except ImportError:
+    from transformers.utils.generic import TransformersKwargs as KwargsForCausalLM
+
 from transformers.processing_utils import Unpack
 
 _PATCH_OPTS: PatchOptions | None = None
