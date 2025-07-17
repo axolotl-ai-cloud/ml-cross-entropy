@@ -84,6 +84,9 @@ def cce_forward(
     )
 
     hidden_states = outputs.last_hidden_state
+    if self.lm_head.weight.dtype == torch.bfloat16 and hidden_states.dtype == torch.float32:
+        # specifically only handling the case we've seen with DoRA where it outputs float32 when the weights are bfloat16
+        hidden_states = hidden_states.to(self.lm_head.weight.dtype)
 
     loss = None
     logits = None
