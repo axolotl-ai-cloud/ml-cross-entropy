@@ -4,6 +4,7 @@ from typing import TypeVar
 
 import torch
 import transformers
+from torch.distributed.tensor import DTensor
 
 from cut_cross_entropy import linear_cross_entropy
 from cut_cross_entropy.cce_utils import CCEPreset
@@ -64,7 +65,7 @@ def apply_lce(
     else:
         num_items_in_batch = None
 
-    if isinstance(c, torch.DTensor):
+    if isinstance(c, DTensor):
         # handle Tensor Parallelism
         c = c.to_local()
 
