@@ -64,6 +64,10 @@ def apply_lce(
     else:
         num_items_in_batch = None
 
+    if isinstance(c, torch.DTensor):
+        # handle Tensor Parallelism
+        c = c.to_local()
+
     loss = linear_cross_entropy(
         e,
         c,
