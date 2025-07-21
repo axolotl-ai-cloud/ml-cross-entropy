@@ -69,6 +69,10 @@ def apply_lce(
         # handle Tensor Parallelism
         c = c.to_local()
 
+    if c.dtype == torch.bfloat16 and e.dtype == torch.float32:
+        # specifically only handling the case we've seen with DoRA where it outputs float32 when the weights are bfloat16
+        e = e.to(c.dtype)
+
     loss = linear_cross_entropy(
         e,
         c,
