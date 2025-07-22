@@ -9,6 +9,7 @@ from cut_cross_entropy.linear_cross_entropy import LCE_IMPL_DEFAULT
 from .cohere import patch_cohere, patch_cohere2
 from .gemma import patch_gemma
 from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
+
 try:
     from .gemma3n import patch_gemma3n, patch_gemma3n_text
 except ImportError:
@@ -19,6 +20,7 @@ from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
 from .mistral import patch_mistral
 from .mistral3 import patch_mistral3
+from .voxtral import patch_voxtral
 from .mllama import patch_mllama
 from .phi import patch_phi
 from .phi3 import patch_phi3
@@ -50,6 +52,7 @@ PATCH_FNS = {
     "gemma3n_text": patch_gemma3n_text,
     "mistral": patch_mistral,
     "mistral3": patch_mistral3,
+    "voxtral": patch_voxtral,
     "qwen2": patch_qwen2,
     "qwen2_moe": patch_qwen2_moe,
     "qwen2_vl": patch_qwen2_vl,
