@@ -1,4 +1,4 @@
-"""Voxtral CCE patch. Voxtral uses mistral. Adapted from Voxtral commit."""
+"""Voxtral CCE patch. Voxtral uses llama. Adapted from Voxtral commit."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -36,14 +36,14 @@ def patch_voxtral(
 
     cce_forward = llama_patch.cce_forward
 
-    from transformers.models.mistral import modeling_mistral
+    from transformers.models.llama import modeling_llama
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(
-            maybe_model, modeling_mistral.MistralForCausalLM
-        ), f"Expected a MistralForCausalLM model. Got {type(maybe_model)}."
+            maybe_model, modeling_llama.LlamaForCausalLM
+        ), f"Expected a LlamaForCausalLM model. Got {type(maybe_model)}."
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
-    modeling_mistral.MistralForCausalLM.forward = cce_forward
+    modeling_llama.LlamaForCausalLM.forward = cce_forward
     return None
