@@ -22,6 +22,7 @@ from .mistral import patch_mistral
 from .mistral3 import patch_mistral3
 from .voxtral import patch_voxtral
 from .mllama import patch_mllama
+from .smollm3 import patch_smollm3
 from .phi import patch_phi
 from .phi3 import patch_phi3
 from .phi4_multimodal import patch_phi4_multimodal
@@ -53,6 +54,7 @@ PATCH_FNS = {
     "mistral": patch_mistral,
     "mistral3": patch_mistral3,
     "voxtral": patch_voxtral,
+    "smollm3": patch_smollm3,
     "qwen2": patch_qwen2,
     "qwen2_moe": patch_qwen2_moe,
     "qwen2_vl": patch_qwen2_vl,
