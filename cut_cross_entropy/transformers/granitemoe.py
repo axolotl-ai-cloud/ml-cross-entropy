@@ -28,7 +28,6 @@ from cut_cross_entropy.transformers.utils import (
 )
 from transformers.models.granitemoe.modeling_granitemoe import (
     MoeCausalLMOutputWithPast,
-    MoeModelOutputWithPast,
     load_balancing_loss_func,
 )
 from transformers.cache_utils import Cache
