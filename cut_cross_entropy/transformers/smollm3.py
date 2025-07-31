@@ -41,7 +41,7 @@ def patch_smollm3(
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(
             maybe_model, modeling_smollm3.SmolLM3ForCausalLM
-        ), f"Expected a MistralForCausalLM model. Got {type(maybe_model)}."
+        ), f"Expected a SmolLM3ForCausalLM model. Got {type(maybe_model)}."
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
