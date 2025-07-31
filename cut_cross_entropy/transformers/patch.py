@@ -33,6 +33,7 @@ from .qwen2_vl import patch_qwen2_vl
 from .qwen3 import patch_qwen3
 from .qwen3_moe import patch_qwen3_moe
 from .granite import patch_granite
+from .granitemoe import patch_granitemoe
 
 from .utils import PatchOptions, TransformersModelT
 
@@ -67,6 +68,7 @@ PATCH_FNS = {
     "glm": patch_glm,
     "glm4": patch_glm4,
     "granite": patch_granite,
+    "granitemoe": patch_granitemoe,
 }
 
 
