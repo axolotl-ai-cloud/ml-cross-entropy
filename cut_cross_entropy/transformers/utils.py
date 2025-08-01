@@ -4,9 +4,9 @@ from typing import TypeVar
 
 import torch
 import transformers
-from torch.distributed.tensor import DTensor
+from torch.distributed.tensor import DTensor, Shard
 
-from cut_cross_entropy import linear_cross_entropy
+from cut_cross_entropy import linear_cross_entropy, VocabParallelOptions
 from cut_cross_entropy.cce_utils import CCEPreset
 
 TransformersModelT = TypeVar("TransformersModelT", bound=transformers.PreTrainedModel)
@@ -66,8 +66,28 @@ def apply_lce(
         num_items_in_batch = None
 
     if isinstance(c, DTensor):
-        # handle Tensor Parallelism
-        c = c.to_local()
+        # Get the device mesh and process group from the DTensor
+        device_mesh = c.device_mesh
+
+        vocab_dim = 0  # or whichever dim is vocab-sharded
+        process_group = device_mesh.get_group("tp")
+
+        # Get the local shard info
+        placement = c.placements[vocab_dim]  # Assuming vocab is sharded on this dim
+        if isinstance(placement, Shard):
+            # Calculate this rank's vocabulary range
+            vocab_size = c.size(vocab_dim)  # this is actually the size of the unsharded tensor
+
+            vocab_parallel_options = VocabParallelOptions.from_vocab(
+                vocab_size,
+                process_group,
+                reduce_e_grad=True,
+            )
+            cce_kwargs["vocab_parallel_options"] = vocab_parallel_options
+
+        c_local = c.to_local()
+    else:
+        c_local = c
 
     if c.dtype == torch.bfloat16 and e.dtype == torch.float32:
         # specifically only handling the case we've seen with DoRA where it outputs float32 when the weights are bfloat16
@@ -75,7 +95,7 @@ def apply_lce(
 
     loss = linear_cross_entropy(
         e,
-        c,
+        c_local,
         labels.to(e.device),
         bias=bias,
         shift=True,
