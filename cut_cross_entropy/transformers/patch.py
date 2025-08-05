@@ -13,8 +13,9 @@ from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
 try:
     from .gemma3n import patch_gemma3n, patch_gemma3n_text
 except ImportError:
-    patch_gemma3n = None
-    patch_gemma3n_text = None
+    patch_gemma3n = None  # type: ignore
+    patch_gemma3n_text = None  # type: ignore
+
 from .glm4 import patch_glm, patch_glm4
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
@@ -34,6 +35,12 @@ from .qwen3 import patch_qwen3
 from .qwen3_moe import patch_qwen3_moe
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe
+
+try:
+    from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
+except ImportError:
+    patch_hunyuan_v1_dense = None  # type: ignore
+    patch_hunyuan_v1_moe = None  # type: ignore
 
 from .utils import PatchOptions, TransformersModelT
 
@@ -69,6 +76,8 @@ PATCH_FNS = {
     "glm4": patch_glm4,
     "granite": patch_granite,
     "granitemoe": patch_granitemoe,
+    "hunyuan_v1_dense": patch_hunyuan_v1_dense,
+    "hunyuan_v1_moe": patch_hunyuan_v1_moe,
 }
 
 
@@ -141,6 +150,12 @@ def cce_patch(
     )
 
     if model_type in PATCH_FNS:
+        if PATCH_FNS[model_type] is None:
+            raise ValueError(
+                "CCE cannot import the related modeling class."
+                f"Please ensure your transformers version support {model_type}"
+            )
+
         return PATCH_FNS[model_type](model_type_or_model, patch_options)
     else:
         raise RuntimeError(f"Unknown model type {model_type}")
