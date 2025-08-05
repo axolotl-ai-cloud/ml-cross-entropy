@@ -42,6 +42,8 @@ except ImportError:
     patch_hunyuan_v1_dense = None  # type: ignore
     patch_hunyuan_v1_moe = None  # type: ignore
 
+from .arcee import patch_arcee
+
 from .utils import PatchOptions, TransformersModelT
 
 AXOLOTL_CCE_FORK = 1
@@ -78,6 +80,7 @@ PATCH_FNS = {
     "granitemoe": patch_granitemoe,
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
+    "arcee": patch_arcee,
 }
 
 
