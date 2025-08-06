@@ -42,7 +42,10 @@ except ImportError:
     patch_hunyuan_v1_dense = None  # type: ignore
     patch_hunyuan_v1_moe = None  # type: ignore
 
-from .arcee import patch_arcee
+try:
+    from .arcee import patch_arcee
+except ImportError:
+    patch_arcee = None
 
 from .utils import PatchOptions, TransformersModelT
 
