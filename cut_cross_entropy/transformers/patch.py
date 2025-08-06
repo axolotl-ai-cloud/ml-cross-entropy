@@ -42,6 +42,13 @@ except ImportError:
     patch_hunyuan_v1_dense = None  # type: ignore
     patch_hunyuan_v1_moe = None  # type: ignore
 
+from .mixtral import patch_mixtral
+
+try:
+    from .gpt_oss import patch_gpt_oss
+except ImportError:
+    patch_gpt_oss = None  # type: ignore
+
 from .utils import PatchOptions, TransformersModelT
 
 AXOLOTL_CCE_FORK = 1
@@ -62,6 +69,7 @@ PATCH_FNS = {
     "gemma3n_text": patch_gemma3n_text,
     "mistral": patch_mistral,
     "mistral3": patch_mistral3,
+    "mixtral": patch_mixtral,
     "voxtral": patch_voxtral,
     "smollm3": patch_smollm3,
     "qwen2": patch_qwen2,
@@ -78,6 +86,7 @@ PATCH_FNS = {
     "granitemoe": patch_granitemoe,
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
+    "gpt_oss": patch_gpt_oss,
 }
 
 
