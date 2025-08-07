@@ -16,7 +16,7 @@ except ImportError:
     patch_gemma3n = None  # type: ignore
     patch_gemma3n_text = None  # type: ignore
 
-from .glm4 import patch_glm, patch_glm4
+from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
 from .mistral import patch_mistral
@@ -35,25 +35,11 @@ from .qwen3 import patch_qwen3
 from .qwen3_moe import patch_qwen3_moe
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe
-
-try:
-    from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
-except ImportError:
-    patch_hunyuan_v1_dense = None  # type: ignore
-    patch_hunyuan_v1_moe = None  # type: ignore
-
-try:
-    from .arcee import patch_arcee
-except ImportError:
-    patch_arcee = None
-
+from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
+from .arcee import patch_arcee
 from .mixtral import patch_mixtral
-
-try:
-    from .gpt_oss import patch_gpt_oss
-except ImportError:
-    patch_gpt_oss = None  # type: ignore
-
+from .gpt_oss import patch_gpt_oss
+from .deepseek_v3 import patch_deepseek_v3
 
 from .utils import PatchOptions, TransformersModelT
 
@@ -88,12 +74,14 @@ PATCH_FNS = {
     "cohere2": patch_cohere2,
     "glm": patch_glm,
     "glm4": patch_glm4,
+    "glm4_moe": patch_glm4_moe,
     "granite": patch_granite,
     "granitemoe": patch_granitemoe,
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
     "arcee": patch_arcee,
     "gpt_oss": patch_gpt_oss,
+    "deepseek_v3": patch_deepseek_v3,
 }
 
 

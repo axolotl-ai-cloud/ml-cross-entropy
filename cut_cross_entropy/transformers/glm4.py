@@ -1,4 +1,4 @@
-"""GLM 4 patch. GLM family inherits from Llama. Adapted from transformers 4.52.4."""
+"""GLM 4 patch. GLM family inherits from Llama. Adapted from transformers 4.55.0."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -70,4 +70,28 @@ def patch_glm4(
         return maybe_model
 
     modeling_glm4.Glm4ForCausalLM.forward = cce_forward
+    return None
+
+
+def patch_glm4_moe(
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
+    patch_options: PatchOptions,
+) -> TransformersModelT | None:
+    # Set the _PATCH_OPTS in the llama patch file
+    from . import llama as llama_patch
+
+    llama_patch._PATCH_OPTS = patch_options
+
+    cce_forward = llama_patch.cce_forward
+
+    from transformers.models.glm4_moe import modeling_glm4_moe
+
+    if isinstance(maybe_model, transformers.PreTrainedModel):
+        assert isinstance(
+            maybe_model, modeling_glm4_moe.Glm4MoeForCausalLM
+        ), f"Expected a Glm4MoeForCausalLM model. Got {type(maybe_model)}."
+        maybe_model.forward = MethodType(cce_forward, maybe_model)
+        return maybe_model
+
+    modeling_glm4_moe.Glm4MoeForCausalLM.forward = cce_forward
     return None
