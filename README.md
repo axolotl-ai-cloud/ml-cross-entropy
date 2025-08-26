@@ -92,6 +92,11 @@ There are several other implementations available depending on your needs.
 | cce_kahan_full_c_full_e (cce_exact) | This additionally removes gradient filtering from the embedding gradient. This is useful as a reference point/sanity check. |
 
 
+### Numerical Stability
+
+The CCE kernel is designed to work with bf16/fp16 inputs and provides good numerical stability for most use cases. However, for models with very large vocabularies or very long sequence lengths, you may want to consider using the `cce_kahan` implementation which uses Kahan summation (or fp32 accumulation for Triton >= 3.2) to improve numerical precision. This comes at the cost of more memory usage but can be beneficial for training stability.
+
+
 ### Vocabulary Parallelism
 
 We also support computing linear cross-entropy loss for classifier weights sharded
