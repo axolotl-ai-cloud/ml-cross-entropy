@@ -18,6 +18,7 @@ from .gpt_oss import patch_gpt_oss
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe, patch_granitemoehybrid, patch_granitemoeshared
 from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
+from .internvl_chat import patch_internvl_chat
 from .lfm2 import patch_lfm2
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
@@ -102,6 +103,7 @@ PATCH_FNS = {
     "granitemoehybrid": patch_granitemoehybrid,
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
+    "internvl_chat": patch_internvl_chat,
     "kimi_linear": patch_kimi_linear,
     "lfm2": patch_lfm2,
     "lfm2_moe": patch_lfm2_moe,
