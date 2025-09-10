@@ -13,6 +13,7 @@ from .gemma import patch_gemma
 from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
 from .gemma3n import patch_gemma3n, patch_gemma3n_text
 from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
+from .glm4v import patch_glm4v
 from .gpt_oss import patch_gpt_oss
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe
@@ -51,6 +52,11 @@ except ImportError:
     patch_hunyuan_v1_dense = None
     patch_hunyuan_v1_moe = None
 
+try:
+    from .glm4v_moe import patch_glm4v_moe
+except ImportError:
+    patch_glm4v_moe = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -68,6 +74,8 @@ PATCH_FNS = {
     "glm": patch_glm,
     "glm4": patch_glm4,
     "glm4_moe": patch_glm4_moe,
+    "glm4v": patch_glm4v,
+    "glm4v_moe": patch_glm4v_moe,
     "gpt_oss": patch_gpt_oss,
     "granite": patch_granite,
     "granitemoe": patch_granitemoe,
