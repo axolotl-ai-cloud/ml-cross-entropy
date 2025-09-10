@@ -28,7 +28,6 @@ from cut_cross_entropy.transformers.utils import (
 )
 from transformers.models.glm4v.modeling_glm4v import (
     Glm4vCausalLMOutputWithPast,
-    Glm4vForConditionalGeneration,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -70,7 +69,9 @@ def cce_forward_multimodal(
     loss = None
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-    slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -98,7 +99,6 @@ def cce_forward_multimodal(
     )
 
 
-
 def patch_glm4v(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
@@ -110,14 +110,33 @@ def patch_glm4v(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_glm4v.Glm4vForConditionalGeneration
-        ), f"Expected a Glm4vForConditionalGeneration model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_glm4v.Glm4vForConditionalGeneration), (
+            f"Expected a Glm4vForConditionalGeneration model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
 
         return maybe_model
 
-    modeling_glm4v.Glm4vForConditionalGeneration.forward = (
-        cce_forward_multimodal
-    )
+    modeling_glm4v.Glm4vForConditionalGeneration.forward = cce_forward_multimodal
+    return None
+
+
+def patch_glm4v_moe(
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
+    patch_options: PatchOptions,
+) -> TransformersModelT | None:
+    global _PATCH_OPTS  # pylint: disable=global-statement
+
+    _PATCH_OPTS = patch_options
+
+    from transformers.models.glm4v_moe import modeling_glm4v_moe
+
+    if isinstance(maybe_model, transformers.PreTrainedModel):
+        assert isinstance(maybe_model, modeling_glm4v_moe.Glm4vMoeForConditionalGeneration), (
+            f"Expected a Glm4vMoeForConditionalGeneration model. Got {type(maybe_model)}."
+        )
+        maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
+        return maybe_model
+
+    modeling_glm4v_moe.Glm4vMoeForConditionalGeneration.forward = cce_forward_multimodal
     return None
