@@ -16,7 +16,6 @@ from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
 from .gpt_oss import patch_gpt_oss
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe
-from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
 from .mistral import patch_mistral
@@ -41,9 +40,15 @@ try:
 except ImportError:
     patch_seed_oss = None
 
+try:
+    from .apertus import patch_apertus
+except ImportError:
+    patch_apertus = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
+    "apertus": patch_apertus,
     "arcee": patch_arcee,
     "cohere": patch_cohere,
     "cohere2": patch_cohere2,
