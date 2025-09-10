@@ -45,6 +45,12 @@ try:
 except ImportError:
     patch_apertus = None
 
+try:
+    from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
+except ImportError:
+    patch_hunyuan_v1_dense = None
+    patch_hunyuan_v1_moe = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
