@@ -57,6 +57,11 @@ except ImportError:
     patch_glm4v = None
     patch_glm4v_moe = None
 
+try:
+    from .qwen3_next import patch_qwen3_next
+except ImportError:
+    patch_qwen3_next = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -97,6 +102,7 @@ PATCH_FNS = {
     "qwen2_5_vl": patch_qwen2_5_vl,
     "qwen3": patch_qwen3,
     "qwen3_moe": patch_qwen3_moe,
+    "qwen3_next": patch_qwen3_next,
     "smollm3": patch_smollm3,
     "seed_oss": patch_seed_oss,
     "voxtral": patch_voxtral,
