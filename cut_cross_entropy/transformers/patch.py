@@ -6,6 +6,7 @@ from transformers import PretrainedConfig, PreTrainedModel
 from cut_cross_entropy.cce_utils import LinearCrossEntropyImpl
 from cut_cross_entropy.linear_cross_entropy import LCE_IMPL_DEFAULT
 
+from .apertus import patch_apertus
 from .arcee import patch_arcee
 from .cohere import patch_cohere, patch_cohere2
 from .deepseek_v3 import patch_deepseek_v3
@@ -15,7 +16,8 @@ from .gemma3n import patch_gemma3n, patch_gemma3n_text
 from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
 from .gpt_oss import patch_gpt_oss
 from .granite import patch_granite
-from .granitemoe import patch_granitemoe
+from .granitemoe import patch_granitemoe, patch_granitemoehybrid, patch_granitemoeshared
+from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
 from .mistral import patch_mistral
@@ -31,25 +33,11 @@ from .qwen2_moe import patch_qwen2_moe
 from .qwen2_vl import patch_qwen2_vl
 from .qwen3 import patch_qwen3
 from .qwen3_moe import patch_qwen3_moe
+from .qwen3_next import patch_qwen3_next
+from .seed_oss import patch_seed_oss
 from .smollm3 import patch_smollm3
 from .utils import PatchOptions, TransformersModelT
 from .voxtral import patch_voxtral
-
-try:
-    from .seed_oss import patch_seed_oss
-except ImportError:
-    patch_seed_oss = None
-
-try:
-    from .apertus import patch_apertus
-except ImportError:
-    patch_apertus = None
-
-try:
-    from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
-except ImportError:
-    patch_hunyuan_v1_dense = None
-    patch_hunyuan_v1_moe = None
 
 try:
     from .glm4v import patch_glm4v, patch_glm4v_moe
@@ -57,10 +45,6 @@ except ImportError:
     patch_glm4v = None
     patch_glm4v_moe = None
 
-try:
-    from .qwen3_next import patch_qwen3_next
-except ImportError:
-    patch_qwen3_next = None
 
 AXOLOTL_CCE_FORK = 1
 
@@ -84,6 +68,8 @@ PATCH_FNS = {
     "gpt_oss": patch_gpt_oss,
     "granite": patch_granite,
     "granitemoe": patch_granitemoe,
+    "granitemoeshared": patch_granitemoeshared,
+    "granitemoehybrid": patch_granitemoehybrid,
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
     "llama": patch_llama,
