@@ -52,11 +52,8 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> MoeCausalLMOutputWithPast:
-
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_router_logits = (
         output_router_logits
@@ -68,9 +65,7 @@ def cce_forward(
         if output_hidden_states is not None
         else self.config.output_hidden_states
     )
-    return_dict = (
-        return_dict if return_dict is not None else self.config.use_return_dict
-    )
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = self.model(
@@ -93,9 +88,7 @@ def cce_forward(
     loss = None
     logits = None
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -164,12 +157,56 @@ def patch_granitemoe(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_granitemoe.GraniteMoeForCausalLM
-        ), f"Expected a GraniteMoeForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_granitemoe.GraniteMoeForCausalLM), (
+            f"Expected a GraniteMoeForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
 
         return maybe_model
 
     modeling_granitemoe.GraniteMoeForCausalLM.forward = cce_forward
+    return None
+
+
+def patch_granitemoeshared(
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
+    patch_options: PatchOptions,
+) -> TransformersModelT | None:
+    global _PATCH_OPTS
+
+    from transformers.models.granitemoe import modeling_granitemoe
+
+    _PATCH_OPTS = patch_options
+
+    if isinstance(maybe_model, transformers.PreTrainedModel):
+        assert isinstance(maybe_model, modeling_granitemoe.GraniteMoeSharedForCausalLM), (
+            f"Expected a GraniteMoeSharedForCausalLM model. Got {type(maybe_model)}."
+        )
+        maybe_model.forward = MethodType(cce_forward, maybe_model)
+
+        return maybe_model
+
+    modeling_granitemoe.GraniteMoeSharedForCausalLM.forward = cce_forward
+    return None
+
+
+def patch_granitemoehybrid(
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
+    patch_options: PatchOptions,
+) -> TransformersModelT | None:
+    global _PATCH_OPTS
+
+    from transformers.models.granitemoe import modeling_granitemoe
+
+    _PATCH_OPTS = patch_options
+
+    if isinstance(maybe_model, transformers.PreTrainedModel):
+        assert isinstance(maybe_model, modeling_granitemoe.GraniteMoeHybridForCausalLM), (
+            f"Expected a GraniteMoeHybridForCausalLM model. Got {type(maybe_model)}."
+        )
+        maybe_model.forward = MethodType(cce_forward, maybe_model)
+
+        return maybe_model
+
+    modeling_granitemoe.GraniteMoeHybridForCausalLM.forward = cce_forward
     return None
