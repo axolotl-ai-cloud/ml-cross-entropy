@@ -1,4 +1,4 @@
-"""Phi CCE patch. Phi inherits Llama. Adapted from transformers 4.52.4."""
+"""Phi CCE patch. Phi inherits Llama. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -19,6 +19,7 @@
 from types import MethodType
 
 import transformers
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
@@ -39,9 +40,9 @@ def patch_phi(
     from transformers.models.phi import modeling_phi
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_phi.PhiForCausalLM
-        ), f"Expected a PhiForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_phi.PhiForCausalLM), (
+            f"Expected a PhiForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

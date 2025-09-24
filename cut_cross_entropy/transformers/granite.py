@@ -1,4 +1,4 @@
-"""Granite CCE patch. Adapted from transformers 4.54.0."""
+"""Granite CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,17 +16,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from types import MethodType
-from typing import Union, Optional
+from typing import Optional, Union
 
 import torch
 import transformers
-
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import (
-    CausalLMOutputWithPast,
     BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
 )
 
 from cut_cross_entropy.transformers.utils import (
@@ -54,9 +52,7 @@ def cce_forward(
     **kwargs,
 ) -> CausalLMOutputWithPast:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
@@ -84,9 +80,7 @@ def cce_forward(
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -101,7 +95,6 @@ def cce_forward(
             **kwargs,
         )
     else:
-
         logits = self.lm_head(hidden_states[:, slice_indices, :])
         logits = logits / self.config.logits_scaling  # main diff with Llama
 
@@ -132,9 +125,9 @@ def patch_granite(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_granite.GraniteForCausalLM
-        ), f"Expected a GraniteForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_granite.GraniteForCausalLM), (
+            f"Expected a GraniteForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

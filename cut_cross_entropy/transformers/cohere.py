@@ -1,4 +1,4 @@
-"""Cohere and Cohere2 CCE patch. Adapted from transformers 4.52.4."""
+"""Cohere and Cohere2 CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -31,13 +31,6 @@ from cut_cross_entropy.transformers.utils import (
 )
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-try:
-    from transformers.models.cohere.modeling_cohere import (
-        KwargsForCausalLM,
-    )
-except ImportError:
-    from transformers.utils.generic import TransformersKwargs as KwargsForCausalLM
-
 from transformers.processing_utils import Unpack
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -45,7 +38,7 @@ _PATCH_OPTS: PatchOptions | None = None
 
 def cce_forward(
     self,
-    input_ids: torch.LongTensor | None = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
@@ -56,12 +49,10 @@ def cce_forward(
     output_hidden_states: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
-    **kwargs: Unpack[KwargsForCausalLM],
+    **kwargs,
 ) -> CausalLMOutputWithPast:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
@@ -89,9 +80,7 @@ def cce_forward(
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -116,7 +105,6 @@ def cce_forward(
                 **kwargs,
             )
 
-
     return CausalLMOutputWithPast(
         loss=loss,
         logits=logits,
@@ -136,9 +124,9 @@ def patch_cohere(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_cohere.CohereForCausalLM
-        ), f"Expected a CohereForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_cohere.CohereForCausalLM), (
+            f"Expected a CohereForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
@@ -156,9 +144,9 @@ def patch_cohere2(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_cohere2.Cohere2ForCausalLM
-        ), f"Expected a Cohere2ForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_cohere2.Cohere2ForCausalLM), (
+            f"Expected a Cohere2ForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

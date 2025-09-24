@@ -1,4 +1,4 @@
-"""Gemma3n CCE patch. Adapted from transformers 4.53.0."""
+"""Gemma3n CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -17,7 +17,7 @@
 # limitations under the License.
 
 from types import MethodType
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import transformers
@@ -52,9 +52,7 @@ def cce_forward(
     **loss_kwargs,
 ) -> CausalLMOutputWithPast:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
@@ -81,9 +79,7 @@ def cce_forward(
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -135,9 +131,7 @@ def cce_forward_multimodal(
     **lm_kwargs,
 ) -> Gemma3nCausalLMOutputWithPast:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
@@ -170,9 +164,7 @@ def cce_forward_multimodal(
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -187,7 +179,7 @@ def cce_forward_multimodal(
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
-            softcap=self.config.get_text_config().final_logit_softcapping,
+            softcap=getattr(self.config.get_text_config(), "final_logit_softcapping", None),
             **lm_kwargs,
         )
     else:
@@ -207,9 +199,7 @@ def cce_forward_multimodal(
             if attention_mask is not None:
                 # we use the input attention mask to shift the logits and labels, because it is 2D.
                 # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(
-                    logits.device
-                )
+                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(logits.device)
                 shift_logits = shift_logits[
                     shift_attention_mask.to(logits.device) != 0
                 ].contiguous()
@@ -247,9 +237,9 @@ def patch_gemma3n_text(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_gemma3n.Gemma3nForCausalLM
-        ), f"Expected a Gemma3nForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_gemma3n.Gemma3nForCausalLM), (
+            f"Expected a Gemma3nForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
@@ -267,9 +257,9 @@ def patch_gemma3n(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_gemma3n.Gemma3nForConditionalGeneration
-        ), f"Expected a Gemma3nForConditionalGeneration model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_gemma3n.Gemma3nForConditionalGeneration), (
+            f"Expected a Gemma3nForConditionalGeneration model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
         return maybe_model
 

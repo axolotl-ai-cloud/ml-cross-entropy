@@ -1,4 +1,4 @@
-"""Granite MoE CCE patch. Adapted from transformers v4.56.0."""
+"""Granite MoE CCE patch. Adapted from transformers v4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,16 +21,17 @@ from typing import Optional, Union
 
 import torch
 import transformers
+from transformers.cache_utils import Cache
+from transformers.models.granitemoe.modeling_granitemoe import (
+    MoeCausalLMOutputWithPast,
+    load_balancing_loss_func,
+)
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
 )
-from transformers.models.granitemoe.modeling_granitemoe import (
-    MoeCausalLMOutputWithPast,
-    load_balancing_loss_func,
-)
-from transformers.cache_utils import Cache
 
 _PATCH_OPTS: PatchOptions | None = None
 

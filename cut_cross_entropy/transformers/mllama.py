@@ -1,4 +1,4 @@
-"""Mllama CCE patch. Adapted from transformers 4.52.4."""
+"""Mllama CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,15 +21,16 @@ from typing import Optional, Tuple, Union
 
 import torch
 import transformers
-from cut_cross_entropy.transformers.utils import (
-    PatchOptions,
-    TransformersModelT,
-    apply_lce,
-)
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
+)
+
+from cut_cross_entropy.transformers.utils import (
+    PatchOptions,
+    TransformersModelT,
+    apply_lce,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -37,37 +38,20 @@ _PATCH_OPTS: PatchOptions | None = None
 
 def cce_forward(
     self,
-    input_ids: torch.LongTensor | None = None,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     cross_attention_states: Optional[torch.LongTensor] = None,
     cross_attention_mask: Optional[torch.LongTensor] = None,
-    full_text_row_masked_out_mask: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    full_text_row_masked_out_mask: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
-    **loss_kwargs,
+    **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
-    output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-    return_dict = (
-        return_dict if return_dict is not None else self.config.use_return_dict
-    )
-
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = self.model(
         input_ids=input_ids,
@@ -79,20 +63,16 @@ def cce_forward(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
         cache_position=cache_position,
+        **kwargs,
     )
 
-    hidden_states = outputs[0]
+    hidden_states = outputs.last_hidden_state
     loss = None
     logits = None
 
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -102,17 +82,13 @@ def cce_forward(
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
-            **loss_kwargs,
+            **kwargs,
         )
     else:
         logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
 
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
-
-    if not return_dict:
-        output = (logits,) + outputs[1:]
-        return (loss,) + output if loss is not None else output
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
     return CausalLMOutputWithPast(
         loss=loss,
@@ -145,18 +121,14 @@ def cce_forward_multimodal(
     **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
         if output_hidden_states is not None
         else self.config.output_hidden_states
     )
-    return_dict = (
-        return_dict if return_dict is not None else self.config.use_return_dict
-    )
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
@@ -182,9 +154,7 @@ def cce_forward_multimodal(
     logits = None
 
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -234,8 +204,10 @@ def patch_mllama(
             # Patch the text-only model's forward method.
             maybe_model.forward = MethodType(cce_forward, maybe_model)
             return maybe_model
-        
-        raise TypeError(f"Expected MllamaForConditionalGeneration or MllamaForCausalLM, but got {type(maybe_model)}")
+
+        raise TypeError(
+            f"Expected MllamaForConditionalGeneration or MllamaForCausalLM, but got {type(maybe_model)}"
+        )
 
     modeling_mllama.MllamaForConditionalGeneration.forward = cce_forward_multimodal
     modeling_mllama.MllamaForCausalLM.forward = cce_forward

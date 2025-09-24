@@ -1,4 +1,4 @@
-"""SmolLM3 CCE patch. SmolLM3 inherits Llama. Adapted from transformers 4.54.0."""
+"""SmolLM3 CCE patch. SmolLM3 inherits Llama. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -19,6 +19,7 @@
 from types import MethodType
 
 import transformers
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
@@ -39,9 +40,9 @@ def patch_smollm3(
     from transformers.models.smollm3 import modeling_smollm3
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_smollm3.SmolLM3ForCausalLM
-        ), f"Expected a SmolLM3ForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_smollm3.SmolLM3ForCausalLM), (
+            f"Expected a SmolLM3ForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

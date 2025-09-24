@@ -1,4 +1,4 @@
-"""Seed_OSS CCE patch. Inherits Llama. Adapted from transformers Seed_OSS PR."""
+"""Seed_OSS CCE patch. Inherits Llama. Adapted from transformers v4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

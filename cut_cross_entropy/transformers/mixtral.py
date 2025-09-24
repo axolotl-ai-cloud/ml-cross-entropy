@@ -1,4 +1,4 @@
-"""Mixtral CCE patch. Adapted from transformers 4.55.0."""
+"""Mixtral CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -17,24 +17,22 @@
 # limitations under the License.
 
 from types import MethodType
-
 from typing import Optional, Union
 
 import torch
-
 import transformers
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import (
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
 )
+from transformers.models.mixtral.modeling_mixtral import load_balancing_loss_func
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
 )
-
-from transformers.models.mixtral.modeling_mixtral import load_balancing_loss_func
 
 _PATCH_OPTS: PatchOptions | None = None
 
@@ -53,7 +51,6 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> MoeCausalLMOutputWithPast:
-
     output_router_logits = (
         output_router_logits
         if output_router_logits is not None
@@ -79,9 +76,7 @@ def cce_forward(
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -134,9 +129,9 @@ def patch_mixtral(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_mixtral.MixtralForCausalLM
-        ), f"Expected a MixtralForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_mixtral.MixtralForCausalLM), (
+            f"Expected a MixtralForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
 
         return maybe_model

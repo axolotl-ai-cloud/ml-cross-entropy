@@ -1,4 +1,4 @@
-"""Mistral CCE patch. Mistral inherits Llama. Adapted from transformers 4.52.4."""
+"""Mistral CCE patch. Mistral inherits Llama. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -19,6 +19,7 @@
 from types import MethodType
 
 import transformers
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
@@ -39,9 +40,9 @@ def patch_mistral(
     from transformers.models.mistral import modeling_mistral
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_mistral.MistralForCausalLM
-        ), f"Expected a MistralForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_mistral.MistralForCausalLM), (
+            f"Expected a MistralForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

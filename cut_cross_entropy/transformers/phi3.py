@@ -1,4 +1,4 @@
-"""Phi3 CCE patch. Phi3 inherits Mistral which inherits Llama. Adapted from transformers 4.52.4."""
+"""Phi3 CCE patch. Phi3 inherits Mistral which inherits Llama. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -19,6 +19,7 @@
 from types import MethodType
 
 import transformers
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
@@ -39,9 +40,9 @@ def patch_phi3(
     from transformers.models.phi3 import modeling_phi3
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_phi3.Phi3ForCausalLM
-        ), f"Expected a Phi3ForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_phi3.Phi3ForCausalLM), (
+            f"Expected a Phi3ForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

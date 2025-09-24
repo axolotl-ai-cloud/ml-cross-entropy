@@ -6,7 +6,7 @@ import torch
 import transformers
 from torch.distributed.tensor import DTensor, Shard
 
-from cut_cross_entropy import linear_cross_entropy, VocabParallelOptions
+from cut_cross_entropy import VocabParallelOptions, linear_cross_entropy
 from cut_cross_entropy.cce_utils import CCEPreset
 
 TransformersModelT = TypeVar("TransformersModelT", bound=transformers.PreTrainedModel)

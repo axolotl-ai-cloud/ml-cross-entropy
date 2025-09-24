@@ -1,4 +1,4 @@
-"""GLM4V CCE patch. Adapted from transformers v4.56.1"""
+"""GLM4V CCE patch. Adapted from transformers v4.56.2"""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,13 +21,14 @@ from typing import Optional, Union
 
 import torch
 import transformers
+from transformers.models.glm4v.modeling_glm4v import (
+    Glm4vCausalLMOutputWithPast,
+)
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
-)
-from transformers.models.glm4v.modeling_glm4v import (
-    Glm4vCausalLMOutputWithPast,
 )
 
 _PATCH_OPTS: PatchOptions | None = None

@@ -1,4 +1,4 @@
-"""Qwen2 CCE patch. Qwen2 inherits Llama. Adapted from transformers 4.52.4."""
+"""Qwen2 CCE patch. Qwen2 inherits Llama. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -19,6 +19,7 @@
 from types import MethodType
 
 import transformers
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,

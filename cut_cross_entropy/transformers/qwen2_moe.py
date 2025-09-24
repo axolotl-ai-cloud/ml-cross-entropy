@@ -1,4 +1,4 @@
-"""Qwen2 MoE CCE patch. Adapted from transformers v4.52.4."""
+"""Qwen2 MoE CCE patch. Adapted from transformers v4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,15 +21,17 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from cut_cross_entropy.transformers.utils import (
-    PatchOptions,
-    TransformersModelT,
-    apply_lce,
-)
+from transformers.cache_utils import Cache
 from transformers.models.qwen2_moe.modeling_qwen2_moe import (
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
     load_balancing_loss_func,
+)
+
+from cut_cross_entropy.transformers.utils import (
+    PatchOptions,
+    TransformersModelT,
+    apply_lce,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -40,7 +42,7 @@ def cce_forward(
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[list[torch.FloatTensor]] = None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -51,11 +53,8 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **loss_kwargs,
 ) -> MoeCausalLMOutputWithPast:
-
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_router_logits = (
         output_router_logits
@@ -86,14 +85,9 @@ def cce_forward(
     loss = None
     logits = None
 
-    if hidden_states is None:
-        raise ValueError("hidden_states is None")
-
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -146,9 +140,9 @@ def patch_qwen2_moe(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_qwen2_moe.Qwen2MoeForCausalLM
-        ), f"Expected a Qwen2MoeForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_qwen2_moe.Qwen2MoeForCausalLM), (
+            f"Expected a Qwen2MoeForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
 
         return maybe_model

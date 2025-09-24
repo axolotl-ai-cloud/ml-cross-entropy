@@ -1,4 +1,4 @@
-"""Phi-4 Multimodal CCE patch. Adapted from transformers 4.52.4."""
+"""Phi-4 Multimodal CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,21 +21,24 @@ from typing import Optional, Union
 
 import torch
 import transformers
+from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
 )
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
 _PATCH_OPTS: PatchOptions | None = None
+
 
 def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[list[torch.FloatTensor]] = None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     image_pixel_values: Optional[torch.FloatTensor] = None,
     image_sizes: Optional[torch.LongTensor] = None,
@@ -51,11 +54,16 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> CausalLMOutputWithPast:
-    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+    output_attentions = (
+        output_attentions if output_attentions is not None else self.config.output_attentions
+    )
     output_hidden_states = (
-        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        output_hidden_states
+        if output_hidden_states is not None
+        else self.config.output_hidden_states
     )
 
+    # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -76,11 +84,13 @@ def cce_forward_multimodal(
     )
 
     hidden_states = outputs.last_hidden_state
-    
+
     loss = None
     logits = None
 
-    slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -96,7 +106,6 @@ def cce_forward_multimodal(
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size)
 
-
     return CausalLMOutputWithPast(
         loss=loss,
         logits=logits,
@@ -104,6 +113,7 @@ def cce_forward_multimodal(
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
     )
+
 
 def patch_phi4_multimodal(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
@@ -115,13 +125,12 @@ def patch_phi4_multimodal(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_phi4_multimodal.Phi4MultimodalForCausalLM
-        ), f"Expected a Phi4MultimodalForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_phi4_multimodal.Phi4MultimodalForCausalLM), (
+            f"Expected a Phi4MultimodalForCausalLM model. Got {type(maybe_model)}."
+        )
 
         maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
         return maybe_model
-
 
     modeling_phi4_multimodal.Phi4MultimodalForCausalLM.forward = cce_forward_multimodal
     return None

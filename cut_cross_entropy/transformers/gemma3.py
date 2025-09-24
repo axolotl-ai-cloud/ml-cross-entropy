@@ -1,4 +1,4 @@
-"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 4.52.4."""
+"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 4.56.2."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -24,17 +24,18 @@ from typing import Optional, Tuple, Union
 
 import torch
 import transformers
-from cut_cross_entropy.transformers.utils import (
-    PatchOptions,
-    TransformersModelT,
-    apply_lce,
-)
 from torch import nn
 from transformers.cache_utils import Cache, HybridCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma3.modeling_gemma3 import (
     Gemma3CausalLMOutputWithPast,
     Gemma3ModelOutputWithPast,
+)
+
+from cut_cross_entropy.transformers.utils import (
+    PatchOptions,
+    TransformersModelT,
+    apply_lce,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -56,9 +57,7 @@ def cce_forward(
     **loss_kwargs,
 ) -> CausalLMOutputWithPast:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
@@ -85,9 +84,7 @@ def cce_forward(
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
@@ -119,7 +116,6 @@ def cce_forward(
     )
 
 
-
 def cce_forward_multimodal(
     self,
     input_ids: torch.LongTensor | None = None,
@@ -138,9 +134,13 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **lm_kwargs,
 ) -> Union[Tuple, Gemma3CausalLMOutputWithPast]:
-    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+    output_attentions = (
+        output_attentions if output_attentions is not None else self.config.output_attentions
+    )
     output_hidden_states = (
-        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        output_hidden_states
+        if output_hidden_states is not None
+        else self.config.output_hidden_states
     )
     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -166,7 +166,9 @@ def cce_forward_multimodal(
     logits = None
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-    slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -190,8 +192,12 @@ def cce_forward_multimodal(
                 # we use the input attention mask to shift the logits and labels, because it is 2D.
                 # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
                 shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(logits.device)
-                shift_logits = shift_logits[shift_attention_mask.to(logits.device) != 0].contiguous()
-                shift_labels = shift_labels[shift_attention_mask.to(shift_labels.device) != 0].contiguous()
+                shift_logits = shift_logits[
+                    shift_attention_mask.to(logits.device) != 0
+                ].contiguous()
+                shift_labels = shift_labels[
+                    shift_attention_mask.to(shift_labels.device) != 0
+                ].contiguous()
             else:
                 shift_logits = shift_logits.contiguous()
                 shift_labels = shift_labels.contiguous()
@@ -226,9 +232,9 @@ def patch_gemma2(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_gemma2.Gemma2ForCausalLM
-        ), f"Expected a Gemma2ForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_gemma2.Gemma2ForCausalLM), (
+            f"Expected a Gemma2ForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
@@ -246,9 +252,9 @@ def patch_gemma3_text(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_gemma3.Gemma3ForCausalLM
-        ), f"Expected a Gemma3ForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_gemma3.Gemma3ForCausalLM), (
+            f"Expected a Gemma3ForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
@@ -266,9 +272,9 @@ def patch_gemma3(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_gemma3.Gemma3ForConditionalGeneration
-        ), f"Expected a Gemma3ForConditionalGeneration model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_gemma3.Gemma3ForConditionalGeneration), (
+            f"Expected a Gemma3ForConditionalGeneration model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
 
         return maybe_model
