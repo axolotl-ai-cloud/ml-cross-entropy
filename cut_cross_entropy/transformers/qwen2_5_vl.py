@@ -1,4 +1,4 @@
-"""Qwen2.5 VL CCE patch. Adapted from transformers v4.52.4"""
+"""Qwen2.5 VL CCE patch. Adapted from transformers v4.56.2"""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,14 +21,15 @@ from typing import Optional, Tuple, Union
 
 import torch
 import transformers
+from transformers.cache_utils import Cache
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    Qwen2_5_VLCausalLMOutputWithPast,
+)
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
-)
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
-    Qwen2_5_VLCausalLMOutputWithPast,
-    Qwen2_5_VLModelOutputWithPast,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -39,13 +40,12 @@ def cce_forward_multimodal(
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[list[torch.FloatTensor]] = None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
     pixel_values: Optional[torch.Tensor] = None,
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
@@ -53,28 +53,25 @@ def cce_forward_multimodal(
     rope_deltas: Optional[torch.LongTensor] = None,
     cache_position: Optional[torch.LongTensor] = None,
     second_per_grid_ts: Optional[torch.Tensor] = None,
+    logits_to_keep: Union[int, torch.Tensor] = 0,
+    **kwargs,
 ) -> Union[Tuple, Qwen2_5_VLCausalLMOutputWithPast]:
     output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
+        output_attentions if output_attentions is not None else self.config.output_attentions
     )
     output_hidden_states = (
         output_hidden_states
         if output_hidden_states is not None
         else self.config.output_hidden_states
     )
-    return_dict = (
-        return_dict if return_dict is not None else self.config.use_return_dict
-    )
 
-    outputs: Qwen2_5_VLModelOutputWithPast = self.model(
+    outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,
         pixel_values_videos=pixel_values_videos,
         image_grid_thw=image_grid_thw,
         video_grid_thw=video_grid_thw,
-        second_per_grid_ts=second_per_grid_ts,  # Pass the new arg
+        second_per_grid_ts=second_per_grid_ts,
         position_ids=position_ids,
         attention_mask=attention_mask,
         past_key_values=past_key_values,
@@ -82,33 +79,39 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
+        return_dict=True,
         cache_position=cache_position,
+        **kwargs,
     )
 
     hidden_states = outputs[0]
     logits = None
     loss = None
 
+    # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
+
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
         loss = apply_lce(
-            hidden_states,
+            hidden_states[:, slice_indices, :],
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
+            **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states)
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
             loss = self.loss_function(
-                logits=logits, labels=labels, vocab_size=self.config.vocab_size
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
-
-    if not return_dict:
-        output = (logits,) + outputs[1:]
-        return (loss,) + output if loss is not None else output
 
     return Qwen2_5_VLCausalLMOutputWithPast(
         loss=loss,
@@ -131,14 +134,12 @@ def patch_qwen2_5_vl(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration
-        ), f"Expected a Qwen2_5_VLForConditionalGeneration model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration), (
+            f"Expected a Qwen2_5_VLForConditionalGeneration model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
 
         return maybe_model
 
-    modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration.forward = (
-        cce_forward_multimodal
-    )
+    modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration.forward = cce_forward_multimodal
     return None
