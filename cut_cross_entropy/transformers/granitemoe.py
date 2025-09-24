@@ -1,4 +1,4 @@
-"""Granite MoE CCE patch. Adapted from transformers v4.54.0."""
+"""Granite MoE CCE patch. Adapted from transformers v4.56.0."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
