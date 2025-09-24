@@ -1,4 +1,4 @@
-"""Llama CCE patch. Adapted from transformers v4.52.4"""
+"""Llama CCE patch. Adapted from transformers v4.56.2"""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,24 +21,17 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from cut_cross_entropy.transformers.utils import (
-    PatchOptions,
-    TransformersModelT,
-    apply_lce,
-)
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
 )
-try:
-    from transformers.models.llama.modeling_llama import (
-        KwargsForCausalLM,
-    )
-except ImportError:
-    from transformers.utils.generic import TransformersKwargs as KwargsForCausalLM
 
-from transformers.processing_utils import Unpack
+from cut_cross_entropy.transformers.utils import (
+    PatchOptions,
+    TransformersModelT,
+    apply_lce,
+)
 
 _PATCH_OPTS: PatchOptions | None = None
 
@@ -52,24 +45,10 @@ def cce_forward(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
-    **kwargs: Unpack[KwargsForCausalLM],
+    **kwargs,
 ) -> CausalLMOutputWithPast:
-    output_attentions = (
-        output_attentions
-        if output_attentions is not None
-        else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-
-    # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -77,22 +56,17 @@ def cce_forward(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
         cache_position=cache_position,
         **kwargs,
     )
 
     hidden_states = outputs.last_hidden_state
-
     loss = None
     logits = None
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
-        slice(-logits_to_keep, None)
-        if isinstance(logits_to_keep, int)
-        else logits_to_keep
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
     )
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -134,9 +108,9 @@ def patch_llama(
     _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_llama.LlamaForCausalLM
-        ), f"Expected a LlamaForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_llama.LlamaForCausalLM), (
+            f"Expected a LlamaForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
