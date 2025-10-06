@@ -58,6 +58,11 @@ try:
 except ImportError:
     patch_lfm2_vl = None
 
+try:
+    from .lfm2_moe import patch_lfm2_moe
+except ImportError:
+    patch_lfm2_moe = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -85,6 +90,7 @@ PATCH_FNS = {
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
     "lfm2": patch_lfm2,
+    "lfm2_moe": patch_lfm2_moe,
     "lfm2_vl": patch_lfm2_vl,
     "llama": patch_llama,
     "llama4": patch_llama4,
