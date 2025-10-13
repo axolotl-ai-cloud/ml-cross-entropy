@@ -24,14 +24,14 @@ from typing import Optional, Union
 
 import torch
 import transformers
+from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
 )
-from transformers.cache_utils import Cache
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.processing_utils import Unpack
 
 _PATCH_OPTS: PatchOptions | None = None
 
