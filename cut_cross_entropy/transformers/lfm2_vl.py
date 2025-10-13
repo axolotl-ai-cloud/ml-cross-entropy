@@ -23,8 +23,6 @@ import torch
 import transformers
 from transformers.cache_utils import Cache
 from transformers.models.lfm2_vl.modeling_lfm2_vl import Lfm2VlCausalLMOutputWithPast
-from transformers.utils import Unpack
-from transformers.utils.generic import TransformersKwargs
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -49,7 +47,7 @@ def cce_forward_multimodal(
     use_cache: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
-    **kwargs: Unpack[TransformersKwargs],
+    **kwargs,
 ):
     outputs = self.model(
         input_ids=input_ids,

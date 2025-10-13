@@ -23,8 +23,6 @@ import torch
 import transformers
 from transformers.cache_utils import Cache
 from transformers.models.llava.modeling_llava import LlavaCausalLMOutputWithPast
-from transformers.utils import Unpack
-from transformers.utils.generic import TransformersKwargs
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -49,7 +47,7 @@ def cce_forward(
     cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     image_sizes: Optional[torch.Tensor] = None,
-    **kwargs: Unpack[TransformersKwargs],
+    **kwargs,
 ):
     vision_feature_layer = (
         vision_feature_layer
