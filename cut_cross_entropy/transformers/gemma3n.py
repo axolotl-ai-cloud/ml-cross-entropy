@@ -21,16 +21,17 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from cut_cross_entropy.transformers.utils import (
-    PatchOptions,
-    TransformersModelT,
-    apply_lce,
-)
 from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.gemma3n.modeling_gemma3n import (
     Gemma3nCausalLMOutputWithPast,
+)
+
+from cut_cross_entropy.transformers.utils import (
+    PatchOptions,
+    TransformersModelT,
+    apply_lce,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
