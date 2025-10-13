@@ -19,6 +19,7 @@
 from types import MethodType
 
 import transformers
+
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
