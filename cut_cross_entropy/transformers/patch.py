@@ -63,6 +63,11 @@ try:
 except ImportError:
     patch_lfm2_moe = None
 
+try:
+    from .kimi_linear import patch_kimi_linear
+except ImportError:
+    patch_kimi_linear = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -89,6 +94,7 @@ PATCH_FNS = {
     "granitemoehybrid": patch_granitemoehybrid,
     "hunyuan_v1_dense": patch_hunyuan_v1_dense,
     "hunyuan_v1_moe": patch_hunyuan_v1_moe,
+    "kimi_linear": patch_kimi_linear,
     "lfm2": patch_lfm2,
     "lfm2_moe": patch_lfm2_moe,
     "lfm2_vl": patch_lfm2_vl,
