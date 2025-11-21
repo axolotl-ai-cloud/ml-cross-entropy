@@ -63,6 +63,13 @@ try:
 except ImportError:
     patch_lfm2_moe = None
 
+try:
+    from .olmo3 import patch_olmo, patch_olmo2, patch_olmo3
+except ImportError:
+    patch_olmo = None
+    patch_olmo2 = None
+    patch_olmo3 = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -100,6 +107,9 @@ PATCH_FNS = {
     "mistral3": patch_mistral3,
     "mixtral": patch_mixtral,
     "mllama": patch_mllama,
+    "olmo": patch_olmo,
+    "olmo2": patch_olmo2,
+    "olmo3": patch_olmo3,
     "phi": patch_phi,
     "phi3": patch_phi3,
     "phi4_multimodal": patch_phi4_multimodal,
