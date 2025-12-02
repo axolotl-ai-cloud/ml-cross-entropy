@@ -1,4 +1,4 @@
-"""Ministral 1/3 CCE patch. Both inherits Llama. Adapted from transformers 2dba972."""
+"""Ministral 1/3 CCE patch. Both inherits Llama. Adapted from transformers PR 42498."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
