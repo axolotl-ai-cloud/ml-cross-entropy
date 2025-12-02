@@ -40,14 +40,15 @@ def patch_ministral(
     from transformers.models.ministral import modeling_ministral
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_ministral.MinistralForCausalLM
-        ), f"Expected a MinistralForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_ministral.MinistralForCausalLM), (
+            f"Expected a MinistralForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
     modeling_ministral.MinistralForCausalLM.forward = cce_forward
     return None
+
 
 def patch_ministral3(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
@@ -63,9 +64,9 @@ def patch_ministral3(
     from transformers.models.ministral3 import modeling_ministral3
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_ministral3.Ministral3ForCausalLM
-        ), f"Expected a Ministral3ForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_ministral3.Ministral3ForCausalLM), (
+            f"Expected a Ministral3ForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
