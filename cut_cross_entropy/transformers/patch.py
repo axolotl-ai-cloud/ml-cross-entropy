@@ -22,6 +22,7 @@ from .lfm2 import patch_lfm2
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
 from .llava import patch_llava
+from .ministral3 import patch_ministral, patch_ministral3
 from .mistral import patch_mistral
 from .mistral3 import patch_mistral3
 from .mixtral import patch_mixtral
@@ -103,6 +104,8 @@ PATCH_FNS = {
     "llama4": patch_llama4,
     "llava": patch_llava,
     "llama4_text": patch_llama4_text,
+    "ministral": patch_ministral,
+    "ministral3": patch_ministral3,
     "mistral": patch_mistral,
     "mistral3": patch_mistral3,
     "mixtral": patch_mixtral,
