@@ -162,6 +162,7 @@ def cce_patch(
     filter_e_grad: bool = True,
     filter_c_grad: bool = True,
     train_only: bool = False,
+    remote_model_id: str | None = None
 ) -> TransformersModelT | None:
     if isinstance(impl, LinearCrossEntropyImpl):
         impl = impl.name.lower()
@@ -199,6 +200,6 @@ def cce_patch(
                 f"Please ensure your transformers version support {model_type}"
             )
 
-        return PATCH_FNS[model_type](model_type_or_model, patch_options)
+        return PATCH_FNS[model_type](model_type_or_model, patch_options, remote_model_id)
     else:
         raise RuntimeError(f"Unknown model type {model_type}")

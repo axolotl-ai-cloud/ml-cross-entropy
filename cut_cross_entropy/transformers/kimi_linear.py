@@ -1,24 +1,18 @@
 """Kimi Linear CCE patch. Adapted from moonshotai/Kimi-Linear-48B-A3B-Instruct revision fd1de63."""
 
-import importlib
 from types import MethodType
 from typing import List, Optional
 
 import torch
 import transformers
-from transformers import AutoConfig, AutoModelForCausalLM
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
-
-try:
-    from accelerate import init_empty_weights
-except ImportError:
-    raise ImportError("We require `accelerate` package to patch kimi_linear.")
 
 _PATCH_OPTS: PatchOptions | None = None
 
@@ -95,53 +89,31 @@ def cce_forward_kimi(
 
 
 def patch_kimi_linear(
-    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
+    maybe_model: TransformersModelT,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    """Patch KimiLinear for CCE."""
     global _PATCH_OPTS
     _PATCH_OPTS = patch_options
 
-    if isinstance(maybe_model, str):
-        # Load the remote model configuration to trigger remote code download
-        model_config = AutoConfig.from_pretrained(maybe_model, trust_remote_code=True)
-
-        # Load model with empty weights to import the modeling module
-        with init_empty_weights():
-            AutoModelForCausalLM.from_pretrained(maybe_model, trust_remote_code=True)
-
-        # Get the modeling module
-        parts = model_config.__class__.__module__.split(".")
-        parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
-        module_name = ".".join(parts)
-        modeling_kimi = importlib.import_module(module_name)
-
-        # Patch the forward method of the class
-        if hasattr(modeling_kimi, "KimiLinearForCausalLM"):
-            modeling_kimi.KimiLinearForCausalLM.forward = cce_forward_kimi
-
+    # Handle remote model patching
+    if remote_model_id is not None:
+        # Use the utility function to patch the remote class
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="KimiLinearForCausalLM",
+            patch_fn=cce_forward_kimi,
+        )
         return None
 
-    elif isinstance(maybe_model, transformers.PreTrainedModel):
-        # Patch an already instantiated model
+    # Handle already instantiated model
+    if isinstance(maybe_model, transformers.PreTrainedModel):
         model_class_name = maybe_model.__class__.__name__
         if model_class_name == "KimiLinearForCausalLM":
             maybe_model.forward = MethodType(cce_forward_kimi, maybe_model)
             return maybe_model
         else:
             raise ValueError(f"Expected KimiLinearForCausalLM, got {model_class_name}")
-
-    elif isinstance(maybe_model, transformers.PretrainedConfig):
-        # Config is already loaded
-        if maybe_model.model_type == "kimi_linear":
-            # Import the modeling module using the config
-            parts = maybe_model.__class__.__module__.split(".")
-            parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
-            module_name = ".".join(parts)
-            modeling_kimi = importlib.import_module(module_name)
-
-            if hasattr(modeling_kimi, "KimiLinearForCausalLM"):
-                modeling_kimi.KimiLinearForCausalLM.forward = cce_forward_kimi
-
-            return None
 
     return None
