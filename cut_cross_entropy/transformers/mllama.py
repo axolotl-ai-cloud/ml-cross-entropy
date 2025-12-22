@@ -28,6 +28,7 @@ from transformers.modeling_outputs import (
 )
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
@@ -189,7 +190,11 @@ def cce_forward_multimodal(
 def patch_mllama(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="mllama"))
+    
     global _PATCH_OPTS
     from transformers.models.mllama import modeling_mllama
 

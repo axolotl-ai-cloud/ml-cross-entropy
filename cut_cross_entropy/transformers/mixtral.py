@@ -29,6 +29,7 @@ from transformers.modeling_outputs import (
 from transformers.models.mixtral.modeling_mixtral import load_balancing_loss_func
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
@@ -121,7 +122,11 @@ def cce_forward(
 def patch_mixtral(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="mixtral"))
+    
     global _PATCH_OPTS
 
     from transformers.models.mixtral import modeling_mixtral

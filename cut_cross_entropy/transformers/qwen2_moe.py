@@ -29,6 +29,7 @@ from transformers.models.qwen2_moe.modeling_qwen2_moe import (
 )
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
@@ -132,7 +133,11 @@ def cce_forward(
 def patch_qwen2_moe(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="qwen2_moe"))
+    
     global _PATCH_OPTS
 
     from transformers.models.qwen2_moe import modeling_qwen2_moe

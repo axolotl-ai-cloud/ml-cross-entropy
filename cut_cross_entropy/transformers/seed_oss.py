@@ -21,6 +21,7 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
 )
@@ -29,7 +30,11 @@ from cut_cross_entropy.transformers.utils import (
 def patch_seed_oss(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="seed_oss"))
+    
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
 

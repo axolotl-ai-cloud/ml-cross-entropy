@@ -25,6 +25,7 @@ from transformers.cache_utils import Cache
 from transformers.models.llava.modeling_llava import LlavaCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
@@ -115,7 +116,11 @@ def cce_forward(
 def patch_llava(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="llava"))
+    
     global _PATCH_OPTS
     from transformers.models.llava import modeling_llava
 

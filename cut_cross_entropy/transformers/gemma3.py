@@ -33,6 +33,7 @@ from transformers.models.gemma3.modeling_gemma3 import (
 )
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
@@ -225,7 +226,10 @@ def cce_forward_multimodal(
 def patch_gemma2(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma2"))
     global _PATCH_OPTS
     from transformers.models.gemma2 import modeling_gemma2
 
@@ -245,7 +249,10 @@ def patch_gemma2(
 def patch_gemma3_text(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma3_text"))
     global _PATCH_OPTS
     from transformers.models.gemma3 import modeling_gemma3
 
@@ -265,7 +272,10 @@ def patch_gemma3_text(
 def patch_gemma3(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma3"))
     global _PATCH_OPTS
     from transformers.models.gemma3 import modeling_gemma3
 

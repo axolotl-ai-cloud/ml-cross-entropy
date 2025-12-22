@@ -25,6 +25,7 @@ from transformers.cache_utils import Cache
 from transformers.models.lfm2_vl.modeling_lfm2_vl import Lfm2VlCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
@@ -104,7 +105,10 @@ def cce_forward_multimodal(
 def patch_lfm2_vl(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="lfm2_vl"))
     global _PATCH_OPTS
     from transformers.models.lfm2_vl import modeling_lfm2_vl
 

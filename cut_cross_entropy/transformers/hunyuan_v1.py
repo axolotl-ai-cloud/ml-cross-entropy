@@ -21,6 +21,7 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
+    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
 )
@@ -29,7 +30,10 @@ from cut_cross_entropy.transformers.utils import (
 def patch_hunyuan_v1_dense(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="hunyuan_v1_dense"))
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
 
@@ -53,7 +57,10 @@ def patch_hunyuan_v1_dense(
 def patch_hunyuan_v1_moe(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
+    if remote_model_id is not None:
+        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="hunyuan_v1_moe"))
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
 
