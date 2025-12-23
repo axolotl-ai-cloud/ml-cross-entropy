@@ -168,22 +168,22 @@ def patch_remote_model_class(
         class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
         patch_fn: Function to patch the class method (e.g., forward function)
     """
+    from transformers.dynamic_module_utils import get_class_in_module
+
     # Load the remote model configuration to trigger remote code download
     model_config = transformers.AutoConfig.from_pretrained(remote_model_id, trust_remote_code=True)
 
-    # Get the auto class to trigger module import without loading weights
+    # Get the auto class to download modeling code without loading weights
     with init_empty_weights():
         transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
 
-    # Get the modeling module from the config
+    # Derive the module name from the config
     parts = model_config.__class__.__module__.split(".")
     parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
     module_name = ".".join(parts)
-    modeling_module = importlib.import_module(module_name)
 
-    # Patch the forward method on the specified class
-    if hasattr(modeling_module, class_name):
-        model_class = getattr(modeling_module, class_name)
-        setattr(model_class, "forward", patch_fn)
-    else:
-        raise AttributeError(f"Class {class_name} not found in module {module_name}")
+    # Use get_class_in_module. This can be patched downstream (for ex: in Axolotl).
+    model_class = get_class_in_module(class_name, module_name)
+
+    # Patch the forward method
+    setattr(model_class, "forward", patch_fn)
