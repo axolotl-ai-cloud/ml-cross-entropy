@@ -22,6 +22,7 @@ from .lfm2 import patch_lfm2
 from .llama import patch_llama
 from .llama4 import patch_llama4, patch_llama4_text
 from .llava import patch_llava
+from .ministral3 import patch_ministral, patch_ministral3
 from .mistral import patch_mistral
 from .mistral3 import patch_mistral3
 from .mixtral import patch_mixtral
@@ -67,6 +68,13 @@ try:
     from .kimi_linear import patch_kimi_linear
 except ImportError:
     patch_kimi_linear = None
+    
+try:
+    from .olmo3 import patch_olmo, patch_olmo2, patch_olmo3
+except ImportError:
+    patch_olmo = None
+    patch_olmo2 = None
+    patch_olmo3 = None
 
 AXOLOTL_CCE_FORK = 1
 
@@ -102,10 +110,15 @@ PATCH_FNS = {
     "llama4": patch_llama4,
     "llava": patch_llava,
     "llama4_text": patch_llama4_text,
+    "ministral": patch_ministral,
+    "ministral3": patch_ministral3,
     "mistral": patch_mistral,
     "mistral3": patch_mistral3,
     "mixtral": patch_mixtral,
     "mllama": patch_mllama,
+    "olmo": patch_olmo,
+    "olmo2": patch_olmo2,
+    "olmo3": patch_olmo3,
     "phi": patch_phi,
     "phi3": patch_phi3,
     "phi4_multimodal": patch_phi4_multimodal,

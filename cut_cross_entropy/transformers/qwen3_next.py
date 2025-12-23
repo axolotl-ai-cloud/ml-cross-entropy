@@ -45,9 +45,9 @@ def patch_qwen3_next(
     from transformers.models.qwen3_next import modeling_qwen3_next
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_qwen3_next.Qwen3NextForCausalLM
-        ), f"Expected a Qwen3NextForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_qwen3_next.Qwen3NextForCausalLM), (
+            f"Expected a Qwen3NextForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
