@@ -5,9 +5,8 @@ from typing import List, Optional
 
 import torch
 import transformers
-from transformers.models.granitemoe.modeling_granitemoe import (
+from transformers.modeling_outputs import (
     MoeCausalLMOutputWithPast,
-    load_balancing_loss_func,
 )
 
 from cut_cross_entropy.transformers.utils import (
@@ -69,6 +68,10 @@ def cce_forward_kimi(
 
     aux_loss = None
     if kwargs.get("output_router_logits", False):
+        from transformers.models.switch_transformers.modeling_switch_transformers import (
+            load_balancing_loss_func,
+        )
+
         aux_loss = load_balancing_loss_func(
             outputs.router_logits,
             num_experts=self.config.num_experts,
