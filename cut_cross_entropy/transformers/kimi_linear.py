@@ -5,7 +5,6 @@ from typing import List, Optional
 
 import torch
 import transformers
-from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -26,23 +25,10 @@ def cce_forward_kimi(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
     generation_mode: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -50,10 +36,8 @@ def cce_forward_kimi(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
         cache_position=cache_position,
+        **kwargs,
     )
 
     hidden_states = outputs[0]
@@ -79,12 +63,30 @@ def cce_forward_kimi(
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
-    return CausalLMOutputWithPast(
+    aux_loss = None
+    if kwargs.get("output_router_logits", False):
+        from transformers.models.granitemoe.modeling_granitemoe import (
+            MoeCausalLMOutputWithPast,
+            load_balancing_loss_func,
+        )
+
+        aux_loss = load_balancing_loss_func(
+            outputs.router_logits,
+            num_experts=self.config.num_experts,
+            top_k=self.config.num_experts_per_token,
+            attention_mask=attention_mask,
+        )
+        if loss is not None:
+            loss = loss + self.config.router_aux_loss_coef * aux_loss
+
+    return MoeCausalLMOutputWithPast(
         loss=loss,
+        aux_loss=aux_loss,
         logits=logits,
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
+        rope_deltas=outputs.rope_deltas,
     )
 
 
