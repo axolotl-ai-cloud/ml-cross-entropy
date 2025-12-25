@@ -29,6 +29,7 @@ from cut_cross_entropy.transformers.utils import (
 def patch_ministral(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
@@ -53,6 +54,7 @@ def patch_ministral(
 def patch_ministral3(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
