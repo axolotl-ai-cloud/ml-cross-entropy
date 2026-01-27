@@ -80,6 +80,11 @@ except ImportError:
     patch_olmo2 = None
     patch_olmo3 = None
 
+try:
+    from .glm_image import patch_glm_image
+except ImportError:
+    patch_glm_image = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -101,6 +106,7 @@ PATCH_FNS = {
     "glm4_moe_lite": patch_glm4_moe_lite,
     "glm46v": patch_glm46v,
     "glm4v": patch_glm4v,
+    "glm_image": patch_glm_image,
     "glm4v_moe": patch_glm4v_moe,
     "gpt_oss": patch_gpt_oss,
     "granite": patch_granite,
