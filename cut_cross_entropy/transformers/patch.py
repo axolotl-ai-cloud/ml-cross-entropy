@@ -10,6 +10,7 @@ from .apertus import patch_apertus
 from .arcee import patch_arcee
 from .cohere import patch_cohere, patch_cohere2
 from .deepseek_v3 import patch_deepseek_v3
+from .exaone4 import patch_exaone4
 from .gemma import patch_gemma
 from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
 from .gemma3n import patch_gemma3n, patch_gemma3n_text
@@ -85,6 +86,7 @@ PATCH_FNS = {
     "cohere": patch_cohere,
     "cohere2": patch_cohere2,
     "deepseek_v3": patch_deepseek_v3,
+    "exaone4": patch_exaone4,
     "gemma": patch_gemma,
     "gemma2": patch_gemma2,
     "gemma3": patch_gemma3,
