@@ -1,4 +1,5 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
+import inspect
 from typing import overload
 
 from transformers import PretrainedConfig, PreTrainedModel
@@ -72,7 +73,7 @@ try:
     from .kimi_linear import patch_kimi_linear
 except ImportError:
     patch_kimi_linear = None
-    
+
 try:
     from .olmo3 import patch_olmo, patch_olmo2, patch_olmo3
 except ImportError:
@@ -189,7 +190,7 @@ def cce_patch(
     filter_e_grad: bool = True,
     filter_c_grad: bool = True,
     train_only: bool = False,
-    remote_model_id: str | None = None
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     if isinstance(impl, LinearCrossEntropyImpl):
         impl = impl.name.lower()
@@ -221,12 +222,18 @@ def cce_patch(
     )
 
     if model_type in PATCH_FNS:
-        if PATCH_FNS[model_type] is None:
+        patch_fn = PATCH_FNS[model_type]
+
+        if patch_fn is None:
             raise ValueError(
                 "CCE cannot import the related modeling class."
                 f"Please ensure your transformers version support {model_type}"
             )
 
-        return PATCH_FNS[model_type](model_type_or_model, patch_options, remote_model_id)
+        sig = inspect.signature(patch_fn)
+        if "remote_model_id" in sig.parameters:
+            return patch_fn(model_type_or_model, patch_options, remote_model_id)
+        else:
+            return patch_fn(model_type_or_model, patch_options)
     else:
         raise RuntimeError(f"Unknown model type {model_type}")
