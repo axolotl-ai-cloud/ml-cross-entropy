@@ -1,4 +1,5 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
+import inspect
 from typing import overload
 
 from transformers import PretrainedConfig, PreTrainedModel
@@ -10,10 +11,13 @@ from .apertus import patch_apertus
 from .arcee import patch_arcee
 from .cohere import patch_cohere, patch_cohere2
 from .deepseek_v3 import patch_deepseek_v3
+from .exaone4 import patch_exaone4
 from .gemma import patch_gemma
 from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
 from .gemma3n import patch_gemma3n, patch_gemma3n_text
 from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
+from .glm4_moe_lite import patch_glm4_moe_lite
+from .glm46v import patch_glm46v
 from .gpt_oss import patch_gpt_oss
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe, patch_granitemoehybrid, patch_granitemoeshared
@@ -69,13 +73,18 @@ try:
     from .kimi_linear import patch_kimi_linear
 except ImportError:
     patch_kimi_linear = None
-    
+
 try:
     from .olmo3 import patch_olmo, patch_olmo2, patch_olmo3
 except ImportError:
     patch_olmo = None
     patch_olmo2 = None
     patch_olmo3 = None
+
+try:
+    from .glm_image import patch_glm_image
+except ImportError:
+    patch_glm_image = None
 
 AXOLOTL_CCE_FORK = 1
 
@@ -85,6 +94,7 @@ PATCH_FNS = {
     "cohere": patch_cohere,
     "cohere2": patch_cohere2,
     "deepseek_v3": patch_deepseek_v3,
+    "exaone4": patch_exaone4,
     "gemma": patch_gemma,
     "gemma2": patch_gemma2,
     "gemma3": patch_gemma3,
@@ -94,7 +104,10 @@ PATCH_FNS = {
     "glm": patch_glm,
     "glm4": patch_glm4,
     "glm4_moe": patch_glm4_moe,
+    "glm4_moe_lite": patch_glm4_moe_lite,
+    "glm46v": patch_glm46v,
     "glm4v": patch_glm4v,
+    "glm_image": patch_glm_image,
     "glm4v_moe": patch_glm4v_moe,
     "gpt_oss": patch_gpt_oss,
     "granite": patch_granite,
@@ -177,7 +190,7 @@ def cce_patch(
     filter_e_grad: bool = True,
     filter_c_grad: bool = True,
     train_only: bool = False,
-    remote_model_id: str | None = None
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     if isinstance(impl, LinearCrossEntropyImpl):
         impl = impl.name.lower()
@@ -209,12 +222,18 @@ def cce_patch(
     )
 
     if model_type in PATCH_FNS:
-        if PATCH_FNS[model_type] is None:
+        patch_fn = PATCH_FNS[model_type]
+
+        if patch_fn is None:
             raise ValueError(
                 "CCE cannot import the related modeling class."
                 f"Please ensure your transformers version support {model_type}"
             )
 
-        return PATCH_FNS[model_type](model_type_or_model, patch_options, remote_model_id)
+        sig = inspect.signature(patch_fn)
+        if "remote_model_id" in sig.parameters:
+            return patch_fn(model_type_or_model, patch_options, remote_model_id)
+        else:
+            return patch_fn(model_type_or_model, patch_options)
     else:
         raise RuntimeError(f"Unknown model type {model_type}")
