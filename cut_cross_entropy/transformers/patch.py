@@ -16,6 +16,7 @@ from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
 from .gemma3n import patch_gemma3n, patch_gemma3n_text
 from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
 from .glm4_moe_lite import patch_glm4_moe_lite
+from .glm46v import patch_glm46v
 from .gpt_oss import patch_gpt_oss
 from .granite import patch_granite
 from .granitemoe import patch_granitemoe, patch_granitemoehybrid, patch_granitemoeshared
@@ -98,6 +99,7 @@ PATCH_FNS = {
     "glm4": patch_glm4,
     "glm4_moe": patch_glm4_moe,
     "glm4_moe_lite": patch_glm4_moe_lite,
+    "glm46v": patch_glm46v,
     "glm4v": patch_glm4v,
     "glm4v_moe": patch_glm4v_moe,
     "gpt_oss": patch_gpt_oss,
