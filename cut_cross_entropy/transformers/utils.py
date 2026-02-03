@@ -1,5 +1,4 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
-import importlib
 from dataclasses import dataclass
 from typing import Callable, TypeVar
 
