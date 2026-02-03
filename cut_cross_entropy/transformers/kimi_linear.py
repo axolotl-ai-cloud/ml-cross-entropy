@@ -119,4 +119,14 @@ def patch_kimi_linear(
         else:
             raise ValueError(f"Expected KimiLinearForCausalLM, got {model_class_name}")
 
+    # Try to import and patch the class directly from transformers
+    try:
+        from transformers.models.kimi_linear import modeling_kimi_linear
+        modeling_kimi_linear.KimiLinearForCausalLM.forward = cce_forward_kimi
+    except ImportError:
+        raise ImportError(
+            "Could not find module to patch. Either ensure remote code is enabled "
+            "or check if transformers has the modeling code integrated for this model type"
+        )
+
     return None
