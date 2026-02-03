@@ -117,4 +117,14 @@ def patch_step3p5(
         else:
             raise ValueError(f"Expected Step3p5ForCausalLM, got {model_class_name}")
 
+    # Try to import and patch the class directly from transformers
+    try:
+        from transformers.models.step3p5 import modeling_step3p5
+        modeling_step3p5.Step3p5ForCausalLM.forward = cce_forward_step3p5
+    except ImportError:
+        raise ImportError(
+            "Could not find module to patch. Either ensure remote code is enabled "
+            "or check if transformers has the modeling code integrated for this model type"
+        )
+
     return None
