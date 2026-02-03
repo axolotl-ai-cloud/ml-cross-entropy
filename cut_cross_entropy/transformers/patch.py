@@ -86,6 +86,11 @@ try:
 except ImportError:
     patch_glm_image = None
 
+try:
+    from .step3p5 import patch_step3p5
+except ImportError:
+    patch_step3p5 = None
+
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
@@ -148,6 +153,7 @@ PATCH_FNS = {
     "qwen3_next": patch_qwen3_next,
     "smollm3": patch_smollm3,
     "seed_oss": patch_seed_oss,
+    "step3p5": patch_step3p5,
     "voxtral": patch_voxtral,
 }
 
