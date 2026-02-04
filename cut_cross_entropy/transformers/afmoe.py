@@ -47,21 +47,22 @@ def cce_forward_afmoe(
     loss = None
     logits = None
 
+    # Only compute necessary logits
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
+
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
 
         loss = apply_lce(
-            hidden_states,
+            hidden_states[:, slice_indices, :],
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
             **kwargs,
         )
     else:
-        # Only compute necessary logits
-        slice_indices = (
-            slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-        )
         logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
