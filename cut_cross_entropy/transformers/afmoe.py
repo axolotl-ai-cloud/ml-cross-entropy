@@ -1,4 +1,4 @@
-"""Afmoe CCE patch."""
+"""Afmoe CCE patch. Adapted from arcee-ai/Trinity-Nano-Preview revision 889c8c4."""
 
 from types import MethodType
 from typing import Optional, Union
