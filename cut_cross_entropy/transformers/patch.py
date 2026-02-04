@@ -7,6 +7,7 @@ from transformers import PretrainedConfig, PreTrainedModel
 from cut_cross_entropy.cce_utils import LinearCrossEntropyImpl
 from cut_cross_entropy.linear_cross_entropy import LCE_IMPL_DEFAULT
 
+from .afmoe import patch_afmoe
 from .apertus import patch_apertus
 from .arcee import patch_arcee
 from .cohere import patch_cohere, patch_cohere2
@@ -94,6 +95,7 @@ except ImportError:
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
+    "afmoe": patch_afmoe,
     "apertus": patch_apertus,
     "arcee": patch_arcee,
     "cohere": patch_cohere,
