@@ -33,6 +33,7 @@ from .mistral import patch_mistral
 from .mistral3 import patch_mistral3
 from .mixtral import patch_mixtral
 from .mllama import patch_mllama
+from .olmoe import patch_olmoe
 from .phi import patch_phi
 from .phi3 import patch_phi3
 from .phi4_multimodal import patch_phi4_multimodal
@@ -141,6 +142,7 @@ PATCH_FNS = {
     "olmo": patch_olmo,
     "olmo2": patch_olmo2,
     "olmo3": patch_olmo3,
+    "olmoe": patch_olmoe,
     "phi": patch_phi,
     "phi3": patch_phi3,
     "phi4_multimodal": patch_phi4_multimodal,
