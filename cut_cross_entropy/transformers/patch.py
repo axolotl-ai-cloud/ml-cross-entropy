@@ -42,6 +42,8 @@ from .qwen2_5_vl import patch_qwen2_5_vl
 from .qwen2_moe import patch_qwen2_moe
 from .qwen2_vl import patch_qwen2_vl
 from .qwen3 import patch_qwen3
+from .qwen3_5 import patch_qwen3_5, patch_qwen3_5_vl
+from .qwen3_5_moe import patch_qwen3_5_moe, patch_qwen3_5_moe_vl
 from .qwen3_moe import patch_qwen3_moe
 from .qwen3_next import patch_qwen3_next
 from .seed_oss import patch_seed_oss
@@ -151,6 +153,10 @@ PATCH_FNS = {
     "qwen2_vl": patch_qwen2_vl,
     "qwen2_5_vl": patch_qwen2_5_vl,
     "qwen3": patch_qwen3,
+    "qwen3_5": patch_qwen3_5,
+    "qwen3_5_vl": patch_qwen3_5_vl,
+    "qwen3_5_moe": patch_qwen3_5_moe,
+    "qwen3_5_moe_vl": patch_qwen3_5_moe_vl,
     "qwen3_moe": patch_qwen3_moe,
     "qwen3_vl": patch_qwen3_vl,
     "qwen3_vl_moe": patch_qwen3_vl_moe,
