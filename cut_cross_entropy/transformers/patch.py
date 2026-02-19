@@ -1,4 +1,5 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
+import importlib
 import inspect
 from typing import overload
 
@@ -7,165 +8,111 @@ from transformers import PretrainedConfig, PreTrainedModel
 from cut_cross_entropy.cce_utils import LinearCrossEntropyImpl
 from cut_cross_entropy.linear_cross_entropy import LCE_IMPL_DEFAULT
 
-from .afmoe import patch_afmoe
-from .apertus import patch_apertus
-from .arcee import patch_arcee
-from .cohere import patch_cohere, patch_cohere2
-from .deepseek_v3 import patch_deepseek_v3
-from .exaone4 import patch_exaone4
-from .gemma import patch_gemma
-from .gemma3 import patch_gemma2, patch_gemma3, patch_gemma3_text
-from .gemma3n import patch_gemma3n, patch_gemma3n_text
-from .glm4 import patch_glm, patch_glm4, patch_glm4_moe
-from .glm4_moe_lite import patch_glm4_moe_lite
-from .glm46v import patch_glm46v
-from .gpt_oss import patch_gpt_oss
-from .granite import patch_granite
-from .granitemoe import patch_granitemoe, patch_granitemoehybrid, patch_granitemoeshared
-from .hunyuan_v1 import patch_hunyuan_v1_dense, patch_hunyuan_v1_moe
-from .internvl import patch_internvl
-from .lfm2 import patch_lfm2
-from .llama import patch_llama
-from .llama4 import patch_llama4, patch_llama4_text
-from .llava import patch_llava
-from .ministral3 import patch_ministral, patch_ministral3
-from .mistral import patch_mistral
-from .mistral3 import patch_mistral3
-from .mixtral import patch_mixtral
-from .mllama import patch_mllama
-from .olmoe import patch_olmoe
-from .phi import patch_phi
-from .phi3 import patch_phi3
-from .phi4_multimodal import patch_phi4_multimodal
-from .qwen2 import patch_qwen2
-from .qwen2_5_vl import patch_qwen2_5_vl
-from .qwen2_moe import patch_qwen2_moe
-from .qwen2_vl import patch_qwen2_vl
-from .qwen3 import patch_qwen3
-from .qwen3_5 import patch_qwen3_5, patch_qwen3_5_vl
-from .qwen3_5_moe import patch_qwen3_5_moe, patch_qwen3_5_moe_vl
-from .qwen3_moe import patch_qwen3_moe
-from .qwen3_next import patch_qwen3_next
-from .seed_oss import patch_seed_oss
-from .smollm3 import patch_smollm3
 from .utils import PatchOptions, TransformersModelT
-from .voxtral import patch_voxtral
-
-try:
-    from .glm4v import patch_glm4v, patch_glm4v_moe
-except ImportError:
-    patch_glm4v = None
-    patch_glm4v_moe = None
-
-try:
-    from .qwen3_vl import patch_qwen3_vl, patch_qwen3_vl_moe
-except ImportError:
-    patch_qwen3_vl = None
-    patch_qwen3_vl_moe = None
-
-try:
-    from .lfm2_vl import patch_lfm2_vl
-except ImportError:
-    patch_lfm2_vl = None
-
-try:
-    from .lfm2_moe import patch_lfm2_moe
-except ImportError:
-    patch_lfm2_moe = None
-
-try:
-    from .kimi_linear import patch_kimi_linear
-except ImportError:
-    patch_kimi_linear = None
-
-try:
-    from .olmo3 import patch_olmo, patch_olmo2, patch_olmo3
-except ImportError:
-    patch_olmo = None
-    patch_olmo2 = None
-    patch_olmo3 = None
-
-try:
-    from .glm_image import patch_glm_image
-except ImportError:
-    patch_glm_image = None
-
-try:
-    from .step3p5 import patch_step3p5
-except ImportError:
-    patch_step3p5 = None
 
 AXOLOTL_CCE_FORK = 1
 
 PATCH_FNS = {
-    "afmoe": patch_afmoe,
-    "apertus": patch_apertus,
-    "arcee": patch_arcee,
-    "cohere": patch_cohere,
-    "cohere2": patch_cohere2,
-    "deepseek_v3": patch_deepseek_v3,
-    "exaone4": patch_exaone4,
-    "gemma": patch_gemma,
-    "gemma2": patch_gemma2,
-    "gemma3": patch_gemma3,
-    "gemma3_text": patch_gemma3_text,
-    "gemma3n": patch_gemma3n,
-    "gemma3n_text": patch_gemma3n_text,
-    "glm": patch_glm,
-    "glm4": patch_glm4,
-    "glm4_moe": patch_glm4_moe,
-    "glm4_moe_lite": patch_glm4_moe_lite,
-    "glm46v": patch_glm46v,
-    "glm4v": patch_glm4v,
-    "glm_image": patch_glm_image,
-    "glm4v_moe": patch_glm4v_moe,
-    "gpt_oss": patch_gpt_oss,
-    "granite": patch_granite,
-    "granitemoe": patch_granitemoe,
-    "granitemoeshared": patch_granitemoeshared,
-    "granitemoehybrid": patch_granitemoehybrid,
-    "hunyuan_v1_dense": patch_hunyuan_v1_dense,
-    "hunyuan_v1_moe": patch_hunyuan_v1_moe,
-    "internvl": patch_internvl,
-    "kimi_linear": patch_kimi_linear,
-    "lfm2": patch_lfm2,
-    "lfm2_moe": patch_lfm2_moe,
-    "lfm2_vl": patch_lfm2_vl,
-    "llama": patch_llama,
-    "llama4": patch_llama4,
-    "llava": patch_llava,
-    "llama4_text": patch_llama4_text,
-    "ministral": patch_ministral,
-    "ministral3": patch_ministral3,
-    "mistral": patch_mistral,
-    "mistral3": patch_mistral3,
-    "mixtral": patch_mixtral,
-    "mllama": patch_mllama,
-    "olmo": patch_olmo,
-    "olmo2": patch_olmo2,
-    "olmo3": patch_olmo3,
-    "olmoe": patch_olmoe,
-    "phi": patch_phi,
-    "phi3": patch_phi3,
-    "phi4_multimodal": patch_phi4_multimodal,
-    "qwen2": patch_qwen2,
-    "qwen2_moe": patch_qwen2_moe,
-    "qwen2_vl": patch_qwen2_vl,
-    "qwen2_5_vl": patch_qwen2_5_vl,
-    "qwen3": patch_qwen3,
-    "qwen3_5": patch_qwen3_5,
-    "qwen3_5_vl": patch_qwen3_5_vl,
-    "qwen3_5_moe": patch_qwen3_5_moe,
-    "qwen3_5_moe_vl": patch_qwen3_5_moe_vl,
-    "qwen3_moe": patch_qwen3_moe,
-    "qwen3_vl": patch_qwen3_vl,
-    "qwen3_vl_moe": patch_qwen3_vl_moe,
-    "qwen3_next": patch_qwen3_next,
-    "smollm3": patch_smollm3,
-    "seed_oss": patch_seed_oss,
-    "step3p5": patch_step3p5,
-    "voxtral": patch_voxtral,
+    "afmoe": ("cut_cross_entropy.transformers.afmoe", "patch_afmoe"),
+    "apertus": ("cut_cross_entropy.transformers.apertus", "patch_apertus"),
+    "arcee": ("cut_cross_entropy.transformers.arcee", "patch_arcee"),
+    "cohere": ("cut_cross_entropy.transformers.cohere", "patch_cohere"),
+    "cohere2": ("cut_cross_entropy.transformers.cohere", "patch_cohere2"),
+    "deepseek_v3": ("cut_cross_entropy.transformers.deepseek_v3", "patch_deepseek_v3"),
+    "exaone4": ("cut_cross_entropy.transformers.exaone4", "patch_exaone4"),
+    "gemma": ("cut_cross_entropy.transformers.gemma", "patch_gemma"),
+    "gemma2": ("cut_cross_entropy.transformers.gemma3", "patch_gemma2"),
+    "gemma3": ("cut_cross_entropy.transformers.gemma3", "patch_gemma3"),
+    "gemma3_text": ("cut_cross_entropy.transformers.gemma3", "patch_gemma3_text"),
+    "gemma3n": ("cut_cross_entropy.transformers.gemma3n", "patch_gemma3n"),
+    "gemma3n_text": ("cut_cross_entropy.transformers.gemma3n", "patch_gemma3n_text"),
+    "glm": ("cut_cross_entropy.transformers.glm4", "patch_glm"),
+    "glm4": ("cut_cross_entropy.transformers.glm4", "patch_glm4"),
+    "glm4_moe": ("cut_cross_entropy.transformers.glm4", "patch_glm4_moe"),
+    "glm4_moe_lite": ("cut_cross_entropy.transformers.glm4_moe_lite", "patch_glm4_moe_lite"),
+    "glm46v": ("cut_cross_entropy.transformers.glm46v", "patch_glm46v"),
+    "glm4v": ("cut_cross_entropy.transformers.glm4v", "patch_glm4v"),
+    "glm_image": ("cut_cross_entropy.transformers.glm_image", "patch_glm_image"),
+    "glm4v_moe": ("cut_cross_entropy.transformers.glm4v", "patch_glm4v_moe"),
+    "gpt_oss": ("cut_cross_entropy.transformers.gpt_oss", "patch_gpt_oss"),
+    "granite": ("cut_cross_entropy.transformers.granite", "patch_granite"),
+    "granitemoe": ("cut_cross_entropy.transformers.granitemoe", "patch_granitemoe"),
+    "granitemoeshared": ("cut_cross_entropy.transformers.granitemoe", "patch_granitemoeshared"),
+    "granitemoehybrid": ("cut_cross_entropy.transformers.granitemoe", "patch_granitemoehybrid"),
+    "hunyuan_v1_dense": ("cut_cross_entropy.transformers.hunyuan_v1", "patch_hunyuan_v1_dense"),
+    "hunyuan_v1_moe": ("cut_cross_entropy.transformers.hunyuan_v1", "patch_hunyuan_v1_moe"),
+    "internvl": ("cut_cross_entropy.transformers.internvl", "patch_internvl"),
+    "kimi_linear": ("cut_cross_entropy.transformers.kimi_linear", "patch_kimi_linear"),
+    "lfm2": ("cut_cross_entropy.transformers.lfm2", "patch_lfm2"),
+    "lfm2_moe": ("cut_cross_entropy.transformers.lfm2_moe", "patch_lfm2_moe"),
+    "lfm2_vl": ("cut_cross_entropy.transformers.lfm2_vl", "patch_lfm2_vl"),
+    "llama": ("cut_cross_entropy.transformers.llama", "patch_llama"),
+    "llama4": ("cut_cross_entropy.transformers.llama4", "patch_llama4"),
+    "llava": ("cut_cross_entropy.transformers.llava", "patch_llava"),
+    "llama4_text": ("cut_cross_entropy.transformers.llama4", "patch_llama4_text"),
+    "ministral": ("cut_cross_entropy.transformers.ministral3", "patch_ministral"),
+    "ministral3": ("cut_cross_entropy.transformers.ministral3", "patch_ministral3"),
+    "mistral": ("cut_cross_entropy.transformers.mistral", "patch_mistral"),
+    "mistral3": ("cut_cross_entropy.transformers.mistral3", "patch_mistral3"),
+    "mixtral": ("cut_cross_entropy.transformers.mixtral", "patch_mixtral"),
+    "mllama": ("cut_cross_entropy.transformers.mllama", "patch_mllama"),
+    "olmo": ("cut_cross_entropy.transformers.olmo3", "patch_olmo"),
+    "olmo2": ("cut_cross_entropy.transformers.olmo3", "patch_olmo2"),
+    "olmo3": ("cut_cross_entropy.transformers.olmo3", "patch_olmo3"),
+    "olmoe": ("cut_cross_entropy.transformers.olmoe", "patch_olmoe"),
+    "phi": ("cut_cross_entropy.transformers.phi", "patch_phi"),
+    "phi3": ("cut_cross_entropy.transformers.phi3", "patch_phi3"),
+    "phi4_multimodal": ("cut_cross_entropy.transformers.phi4_multimodal", "patch_phi4_multimodal"),
+    "qwen2": ("cut_cross_entropy.transformers.qwen2", "patch_qwen2"),
+    "qwen2_moe": ("cut_cross_entropy.transformers.qwen2_moe", "patch_qwen2_moe"),
+    "qwen2_vl": ("cut_cross_entropy.transformers.qwen2_vl", "patch_qwen2_vl"),
+    "qwen2_5_vl": ("cut_cross_entropy.transformers.qwen2_5_vl", "patch_qwen2_5_vl"),
+    "qwen3": ("cut_cross_entropy.transformers.qwen3", "patch_qwen3"),
+    "qwen3_5": ("cut_cross_entropy.transformers.qwen3_5", "patch_qwen3_5"),
+    "qwen3_5_vl": ("cut_cross_entropy.transformers.qwen3_5", "patch_qwen3_5_vl"),
+    "qwen3_5_moe": ("cut_cross_entropy.transformers.qwen3_5_moe", "patch_qwen3_5_moe"),
+    "qwen3_5_moe_vl": ("cut_cross_entropy.transformers.qwen3_5_moe", "patch_qwen3_5_moe_vl"),
+    "qwen3_moe": ("cut_cross_entropy.transformers.qwen3_moe", "patch_qwen3_moe"),
+    "qwen3_vl": ("cut_cross_entropy.transformers.qwen3_vl", "patch_qwen3_vl"),
+    "qwen3_vl_moe": ("cut_cross_entropy.transformers.qwen3_vl", "patch_qwen3_vl_moe"),
+    "qwen3_next": ("cut_cross_entropy.transformers.qwen3_next", "patch_qwen3_next"),
+    "smollm3": ("cut_cross_entropy.transformers.smollm3", "patch_smollm3"),
+    "seed_oss": ("cut_cross_entropy.transformers.seed_oss", "patch_seed_oss"),
+    "step3p5": ("cut_cross_entropy.transformers.step3p5", "patch_step3p5"),
+    "voxtral": ("cut_cross_entropy.transformers.voxtral", "patch_voxtral"),
 }
+
+
+def _get_patch_fn(model_type: str):
+    """Lazy import of patch function.
+
+    Backward compatible: if PATCH_FNS[model_type] is already a callable
+    (e.g. set by a downstream library), return it directly. If it's a
+    tuple, lazy import it via importlib.
+    """
+    if model_type not in PATCH_FNS:
+        raise RuntimeError(f"Unknown model type {model_type}")
+
+    patch_spec = PATCH_FNS[model_type]
+
+    # Backward compatibility: if already a callable, return directly
+    if callable(patch_spec):
+        return patch_spec
+
+    # New API: tuple of (module_path, function_name)
+    module_path, fn_name = patch_spec
+
+    try:
+        module = importlib.import_module(module_path)
+        patch_fn = getattr(module, fn_name)
+        # Cache the imported function for subsequent calls
+        PATCH_FNS[model_type] = patch_fn
+        return patch_fn
+    except (ImportError, AttributeError) as e:
+        raise ValueError(
+            f"CCE cannot import {model_type}. "
+            f"Please ensure your transformers version supports {model_type}. Error: {e}"
+        )
 
 
 @overload
@@ -237,19 +184,11 @@ def cce_patch(
         train_only=train_only,
     )
 
-    if model_type in PATCH_FNS:
-        patch_fn = PATCH_FNS[model_type]
+    patch_fn = _get_patch_fn(model_type)
 
-        if patch_fn is None:
-            raise ValueError(
-                "CCE cannot import the related modeling class."
-                f"Please ensure your transformers version support {model_type}"
-            )
-
-        sig = inspect.signature(patch_fn)
-        if "remote_model_id" in sig.parameters:
-            return patch_fn(model_type_or_model, patch_options, remote_model_id)
-        else:
-            return patch_fn(model_type_or_model, patch_options)
+    # Check if patch_fn supports remote_model_id parameter
+    sig = inspect.signature(patch_fn)
+    if "remote_model_id" in sig.parameters:
+        return patch_fn(model_type_or_model, patch_options, remote_model_id)
     else:
-        raise RuntimeError(f"Unknown model type {model_type}")
+        return patch_fn(model_type_or_model, patch_options)
