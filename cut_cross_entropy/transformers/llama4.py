@@ -32,10 +32,10 @@ from transformers.models.llama4.modeling_llama4 import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -238,12 +238,18 @@ def patch_llama4_text(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="llama4_text"))
     global _PATCH_OPTS  # pylint: disable=global-statement
-    from transformers.models.llama4 import modeling_llama4
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Llama4ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
+    from transformers.models.llama4 import modeling_llama4
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_llama4.Llama4ForCausalLM), (
@@ -266,12 +272,23 @@ def patch_llama4(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="llama4"))
     global _PATCH_OPTS  # pylint: disable=global-statement
-    from transformers.models.llama4 import modeling_llama4
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Llama4ForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Llama4ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
+    from transformers.models.llama4 import modeling_llama4
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_llama4.Llama4ForConditionalGeneration), (

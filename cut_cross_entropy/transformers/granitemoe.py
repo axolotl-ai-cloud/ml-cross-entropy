@@ -28,10 +28,10 @@ from transformers.models.granitemoe.modeling_granitemoe import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -153,13 +153,18 @@ def patch_granitemoe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="granitemoe"))
     global _PATCH_OPTS
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="GraniteMoeForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.granitemoe import modeling_granitemoe
-
-    _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_granitemoe.GraniteMoeForCausalLM), (
@@ -178,13 +183,18 @@ def patch_granitemoeshared(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="granitemoeshared"))
     global _PATCH_OPTS
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="GraniteMoeSharedForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.granitemoeshared import modeling_granitemoeshared
-
-    _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_granitemoeshared.GraniteMoeSharedForCausalLM), (
@@ -203,13 +213,18 @@ def patch_granitemoehybrid(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="granitemoehybrid"))
     global _PATCH_OPTS
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="GraniteMoeHybridForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.granitemoehybrid import modeling_granitemoehybrid
-
-    _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_granitemoehybrid.GraniteMoeHybridForCausalLM), (

@@ -26,10 +26,10 @@ from transformers.models.glm4v.modeling_glm4v import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -106,13 +106,18 @@ def patch_glm4v(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="glm4v"))
     global _PATCH_OPTS  # pylint: disable=global-statement
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Glm4vForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
 
     from transformers.models.glm4v import modeling_glm4v
-
-    _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_glm4v.Glm4vForConditionalGeneration), (
@@ -131,11 +136,16 @@ def patch_glm4v_moe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="glm4v_moe"))
     global _PATCH_OPTS  # pylint: disable=global-statement
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Glm4vMoeForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
 
     from transformers.models.glm4v_moe import modeling_glm4v_moe
 

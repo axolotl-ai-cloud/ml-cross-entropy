@@ -25,10 +25,10 @@ from transformers.cache_utils import Cache
 from transformers.models.lfm2_vl.modeling_lfm2_vl import Lfm2VlCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -107,12 +107,18 @@ def patch_lfm2_vl(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="lfm2_vl"))
     global _PATCH_OPTS
-    from transformers.models.lfm2_vl import modeling_lfm2_vl
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Lfm2VlForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
+
+    from transformers.models.lfm2_vl import modeling_lfm2_vl
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_lfm2_vl.Lfm2VlForConditionalGeneration), (

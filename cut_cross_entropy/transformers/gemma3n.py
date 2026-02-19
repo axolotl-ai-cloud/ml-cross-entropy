@@ -29,10 +29,10 @@ from transformers.models.gemma3n.modeling_gemma3n import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -234,12 +234,18 @@ def patch_gemma3n_text(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma3n_text"))
     global _PATCH_OPTS
-    from transformers.models.gemma3n import modeling_gemma3n
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Gemma3nForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
+    from transformers.models.gemma3n import modeling_gemma3n
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_gemma3n.Gemma3nForCausalLM), (
@@ -257,12 +263,18 @@ def patch_gemma3n(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma3n"))
     global _PATCH_OPTS
-    from transformers.models.gemma3n import modeling_gemma3n
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Gemma3nForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
+
+    from transformers.models.gemma3n import modeling_gemma3n
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_gemma3n.Gemma3nForConditionalGeneration), (

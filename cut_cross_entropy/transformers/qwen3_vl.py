@@ -27,10 +27,10 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -110,13 +110,18 @@ def patch_qwen3_vl(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="qwen3_vl"))
     global _PATCH_OPTS  # pylint: disable=global-statement
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Qwen3VLForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
 
     from transformers.models.qwen3_vl import modeling_qwen3_vl
-
-    _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_qwen3_vl.Qwen3VLForConditionalGeneration), (
@@ -135,13 +140,18 @@ def patch_qwen3_vl_moe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="qwen3_vl_moe"))
     global _PATCH_OPTS  # pylint: disable=global-statement
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Qwen3VLMoeForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
 
     from transformers.models.qwen3_vl import modeling_qwen3_vl
-
-    _PATCH_OPTS = patch_options
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_qwen3_vl.Qwen3VLMoeForConditionalGeneration), (

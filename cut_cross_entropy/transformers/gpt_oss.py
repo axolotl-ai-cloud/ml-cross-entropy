@@ -21,9 +21,9 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
+    patch_remote_model_class,
 )
 
 
@@ -32,9 +32,6 @@ def patch_gpt_oss(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gpt_oss"))
-    
     # Set the _PATCH_OPTS in the mixtral patch file
     from . import mixtral as mixtral_patch
 
@@ -42,12 +39,20 @@ def patch_gpt_oss(
 
     cce_forward = mixtral_patch.cce_forward
 
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="GptOssForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
     from transformers.models.gpt_oss import modeling_gpt_oss
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_gpt_oss.GptOssForCausalLM
-        ), f"Expected a GptOssForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_gpt_oss.GptOssForCausalLM), (
+            f"Expected a GptOssForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 

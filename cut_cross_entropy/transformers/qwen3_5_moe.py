@@ -21,9 +21,9 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
+    patch_remote_model_class,
 )
 
 
@@ -32,17 +32,18 @@ def patch_qwen3_5_moe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(
-            REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="qwen3_5_moe")
-        )
-
-    # Set the _PATCH_OPTS in the mixtral patch file
     from . import mixtral as mixtral_patch
 
     mixtral_patch._PATCH_OPTS = patch_options
-
     cce_forward = mixtral_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Qwen3_5MoeForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
 
@@ -62,17 +63,18 @@ def patch_qwen3_5_moe_vl(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(
-            REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="qwen3_5_moe_vl")
-        )
-
-    # Set the _PATCH_OPTS in the qwen3_vl patch file
     from . import qwen3_vl as qwen3_vl_patch
 
     qwen3_vl_patch._PATCH_OPTS = patch_options
-
     cce_forward_multimodal = qwen3_vl_patch.cce_forward_multimodal
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Qwen3_5MoeForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
 
     from transformers.models.qwen3_5_moe import modeling_qwen3_5_moe
 
