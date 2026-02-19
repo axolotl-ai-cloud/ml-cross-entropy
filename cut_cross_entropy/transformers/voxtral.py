@@ -21,9 +21,9 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
+    patch_remote_model_class,
 )
 
 
@@ -32,9 +32,6 @@ def patch_voxtral(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="voxtral"))
-    
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
 
@@ -42,12 +39,20 @@ def patch_voxtral(
 
     cce_forward = llama_patch.cce_forward
 
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="LlamaForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
     from transformers.models.llama import modeling_llama
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_llama.LlamaForCausalLM
-        ), f"Expected a LlamaForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_llama.LlamaForCausalLM), (
+            f"Expected a LlamaForCausalLM model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
