@@ -33,10 +33,10 @@ from transformers.models.gemma3.modeling_gemma3 import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -228,12 +228,18 @@ def patch_gemma2(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma2"))
     global _PATCH_OPTS
-    from transformers.models.gemma2 import modeling_gemma2
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Gemma2ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
+    from transformers.models.gemma2 import modeling_gemma2
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_gemma2.Gemma2ForCausalLM), (
@@ -251,12 +257,18 @@ def patch_gemma3_text(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma3_text"))
     global _PATCH_OPTS
-    from transformers.models.gemma3 import modeling_gemma3
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Gemma3ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
+    from transformers.models.gemma3 import modeling_gemma3
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_gemma3.Gemma3ForCausalLM), (
@@ -274,12 +286,18 @@ def patch_gemma3(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="gemma3"))
     global _PATCH_OPTS
-    from transformers.models.gemma3 import modeling_gemma3
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Gemma3ForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
+
+    from transformers.models.gemma3 import modeling_gemma3
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_gemma3.Gemma3ForConditionalGeneration), (
