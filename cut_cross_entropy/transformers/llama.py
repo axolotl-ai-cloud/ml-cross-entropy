@@ -28,10 +28,10 @@ from transformers.modeling_outputs import (
 )
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
     apply_lce,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -104,13 +104,18 @@ def patch_llama(
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     """Patch Llama for CCE."""
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="llama"))
-    
     global _PATCH_OPTS
-    from transformers.models.llama import modeling_llama
-
     _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="LlamaForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
+
+    from transformers.models.llama import modeling_llama
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
         assert isinstance(maybe_model, modeling_llama.LlamaForCausalLM), (
