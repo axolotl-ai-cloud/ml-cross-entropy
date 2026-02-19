@@ -7,13 +7,11 @@ import transformers
 
 try:
     from torch.distributed.tensor import DTensor
-    from torch.distributed.tensor.placement_types import Shard
 except ImportError:
     try:
-        from torch.distributed._tensor import DTensor, Shard
+        from torch.distributed._tensor import DTensor
     except ImportError:
         DTensor = None
-        Shard = None
 
 from contextlib import contextmanager
 
@@ -94,6 +92,28 @@ class PatchOptions:
         return True
 
 
+def _resolve_dtensor(
+    t: torch.Tensor,
+) -> tuple[torch.Tensor, VocabParallelOptions | None]:
+    """Resolve a DTensor to its local tensor, creating VocabParallelOptions if Shard(0) is found.
+
+    Scans placements by semantics (not mesh dimension names) to handle all distributed
+    configurations: plain tensor, FSDP2 only, TP only, and FSDP2+TP.
+    """
+    if DTensor is None or not isinstance(t, DTensor):
+        return t, None
+
+    mesh = t.device_mesh
+    for idx, placement in enumerate(t.placements):
+        if placement.is_shard(dim=0):
+            tp_group = mesh.get_group(mesh_dim=idx)
+            # DTensor.shape is always the global (unsharded) shape
+            vp_opts = VocabParallelOptions.from_vocab(t.shape[0], group=tp_group)
+            return t.to_local(), vp_opts
+
+    return t.to_local(), None
+
+
 def apply_lce(
     e: torch.Tensor,
     c: torch.Tensor,
@@ -101,6 +121,7 @@ def apply_lce(
     opts: PatchOptions,
     bias: torch.Tensor | None = None,
     softcap: float | None = None,
+    shift: bool = True,
     **loss_kwargs,
 ) -> torch.Tensor:
     num_items_in_batch = loss_kwargs.get("num_items_in_batch", None)
@@ -110,29 +131,10 @@ def apply_lce(
     else:
         num_items_in_batch = None
 
-    if isinstance(c, DTensor):
-        # Get the device mesh and process group from the DTensor
-        device_mesh = c.device_mesh
-
-        vocab_dim = 0  # or whichever dim is vocab-sharded
-        process_group = device_mesh.get_group("tp")
-
-        # Get the local shard info
-        placement = c.placements[vocab_dim]  # Assuming vocab is sharded on this dim
-        if isinstance(placement, Shard):
-            # Calculate this rank's vocabulary range
-            vocab_size = c.size(vocab_dim)  # this is actually the size of the unsharded tensor
-
-            vocab_parallel_options = VocabParallelOptions.from_vocab(
-                vocab_size,
-                process_group,
-                reduce_e_grad=True,
-            )
-            cce_kwargs["vocab_parallel_options"] = vocab_parallel_options
-
-        c_local = c.to_local()
-    else:
-        c_local = c
+    c, vocab_parallel_options = _resolve_dtensor(c)
+    e, _ = _resolve_dtensor(e)
+    if bias is not None:
+        bias, _ = _resolve_dtensor(bias)
 
     if c.dtype == torch.bfloat16 and e.dtype == torch.float32:
         # specifically only handling the case we've seen with DoRA where it outputs float32 when the weights are bfloat16
@@ -140,11 +142,12 @@ def apply_lce(
 
     loss = linear_cross_entropy(
         e,
-        c_local,
+        c,
         labels.to(e.device),
         bias=bias,
-        shift=True,
+        shift=shift,
         softcap=softcap,
+        vocab_parallel_options=vocab_parallel_options,
         **cce_kwargs,
     )
 
