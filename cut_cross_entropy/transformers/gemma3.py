@@ -25,7 +25,7 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from torch import nn
-from transformers.cache_utils import Cache, HybridCache
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma3.modeling_gemma3 import (
     Gemma3CausalLMOutputWithPast,
@@ -47,7 +47,7 @@ def cce_forward(
     input_ids: torch.LongTensor | None = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[HybridCache] = None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
