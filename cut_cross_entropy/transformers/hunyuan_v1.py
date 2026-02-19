@@ -21,9 +21,9 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
+    patch_remote_model_class,
 )
 
 
@@ -32,14 +32,20 @@ def patch_hunyuan_v1_dense(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="hunyuan_v1_dense"))
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
 
     llama_patch._PATCH_OPTS = patch_options
 
     cce_forward = llama_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="HunYuanDenseV1ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.hunyuan_v1_dense import modeling_hunyuan_v1_dense
 
@@ -59,14 +65,20 @@ def patch_hunyuan_v1_moe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="hunyuan_v1_moe"))
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
 
     llama_patch._PATCH_OPTS = patch_options
 
     cce_forward = llama_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="HunYuanMoEV1ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.hunyuan_v1_moe import modeling_hunyuan_v1_moe
 

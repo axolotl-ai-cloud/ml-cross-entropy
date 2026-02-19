@@ -21,9 +21,9 @@ from types import MethodType
 import transformers
 
 from cut_cross_entropy.transformers.utils import (
-    REMOTE_MODEL_NOT_IMPLEMENTED_ERROR,
     PatchOptions,
     TransformersModelT,
+    patch_remote_model_class,
 )
 
 
@@ -32,15 +32,20 @@ def patch_internvl(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    if remote_model_id is not None:
-        raise NotImplementedError(REMOTE_MODEL_NOT_IMPLEMENTED_ERROR.format(model_type="internvl"))
-
     # Set the _PATCH_OPTS in the llava patch file
     from . import llava as llava_patch
 
     llava_patch._PATCH_OPTS = patch_options
 
     cce_forward = llava_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="InternVLForConditionalGeneration",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.internvl import modeling_internvl
 
