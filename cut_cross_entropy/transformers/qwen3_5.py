@@ -1,4 +1,4 @@
-"""Qwen3_5 CCE patch. They inherit Llama and Qwen3VL respectively. Adapted from transformers Qwen3_5 PR."""
+"""Qwen3_5 CCE patch. CausalLM inherits Qwen3 (Llama), ConditionalGeneration inherits Qwen3VL."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -27,7 +27,7 @@ from cut_cross_entropy.transformers.utils import (
 )
 
 
-def patch_qwen3_5(
+def patch_qwen3_5_text(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
@@ -58,7 +58,7 @@ def patch_qwen3_5(
     return None
 
 
-def patch_qwen3_5_vl(
+def patch_qwen3_5(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,

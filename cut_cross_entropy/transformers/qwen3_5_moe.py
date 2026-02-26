@@ -1,4 +1,4 @@
-"""Qwen3_5 MoE CCE patch. They inherit Mixtral and Qwen3VLMoe respectively. Adapted from transformers Qwen3_5 PR."""
+"""Qwen3_5 MoE CCE patch. CausalLM inherits Qwen3Next (Mixtral), ConditionalGeneration inherits Qwen3VLMoe."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -27,7 +27,7 @@ from cut_cross_entropy.transformers.utils import (
 )
 
 
-def patch_qwen3_5_moe(
+def patch_qwen3_5_moe_text(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
@@ -58,7 +58,7 @@ def patch_qwen3_5_moe(
     return None
 
 
-def patch_qwen3_5_moe_vl(
+def patch_qwen3_5_moe(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
