@@ -293,6 +293,10 @@ def _cce_back_block_d(args) -> int:
     block_d = args["BLOCK_D"]
     return 2 * block_d
 
+try:
+    USE_TF32 = torch.get_float32_matmul_precision() == "high"
+except RuntimeError:
+    USE_TF32 = torch.backends.cuda.matmul.fp32_precision == "tf32" or torch.backends.fp32_precision == "tf32"
 
 _cce_backward_kernel = triton.jit(_cce_backward_kernel)
 _cce_backward_kernel = triton.heuristics(  # type: ignore
@@ -313,9 +317,7 @@ _cce_backward_kernel = triton.heuristics(  # type: ignore
         "KAHAN_E": lambda args: args["dEC"] is not None,
         "KAHAN_C": lambda args: args["dCC"] is not None,
         "COMPUTE_DBIAS": lambda args: args["dBias"] is not None,
-        "DOT_PRECISION": lambda args: "tf32"
-        if torch.get_float32_matmul_precision() == "high"
-        else "ieee",
+        "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee"
     }
 )(_cce_backward_kernel)
 _cce_backward_kernel = cce_backward_autotune()(_cce_backward_kernel)  # type: ignore
