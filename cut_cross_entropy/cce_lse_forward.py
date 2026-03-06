@@ -117,6 +117,11 @@ def _cce_lse_forward_kernel(
     tl.atomic_xchg(this_locks, 0)
 
 
+try:
+    USE_TF32 = torch.get_float32_matmul_precision() == "high"
+except RuntimeError:
+    USE_TF32 = torch.backends.cuda.matmul.fp32_precision == "tf32" or torch.backends.fp32_precision == "tf32"
+
 _cce_lse_forward_kernel = triton.jit(_cce_lse_forward_kernel)
 _cce_lse_forward_kernel = triton.heuristics(  # type: ignore
     {
@@ -126,9 +131,7 @@ _cce_lse_forward_kernel = triton.heuristics(  # type: ignore
         "HAS_SOFTCAP": lambda args: args["softcap"] is not None,
         "HAS_LA": lambda args: args["LA"] is not None,
         "GROUP_B": lambda args: 8,
-        "DOT_PRECISION": lambda args: "tf32"
-        if torch.get_float32_matmul_precision() == "high"
-        else "ieee",
+        "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee"
     }
 )(_cce_lse_forward_kernel)
 _cce_lse_forward_kernel = cce_forward_autotune()(_cce_lse_forward_kernel)  # type: ignore
