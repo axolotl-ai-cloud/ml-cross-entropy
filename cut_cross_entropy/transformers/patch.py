@@ -55,6 +55,7 @@ PATCH_FNS = {
     "ministral3": ("cut_cross_entropy.transformers.ministral3", "patch_ministral3"),
     "mistral": ("cut_cross_entropy.transformers.mistral", "patch_mistral"),
     "mistral3": ("cut_cross_entropy.transformers.mistral3", "patch_mistral3"),
+    "mistral4": ("cut_cross_entropy.transformers.mistral4", "patch_mistral4"),
     "mixtral": ("cut_cross_entropy.transformers.mixtral", "patch_mixtral"),
     "mllama": ("cut_cross_entropy.transformers.mllama", "patch_mllama"),
     "nemotron_h": ("cut_cross_entropy.transformers.nemotron_h", "patch_nemotron_h"),
