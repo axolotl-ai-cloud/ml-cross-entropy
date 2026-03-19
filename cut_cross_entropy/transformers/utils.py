@@ -162,24 +162,51 @@ def patch_remote_model_class(
     """
     Load remote model code and patch a specific class method.
 
+    Handles both native transformers models (e.g. Qwen3.5, Gemma3) and
+    trust_remote_code models (e.g. KimiLinear). For native models, uses
+    direct importlib import. For remote models, downloads code from HF
+    and uses get_class_in_module.
+
+    Also handles VLM (ForConditionalGeneration) models whose top-level
+    config lacks vocab_size — uses text_config for from_config().
+
     Args:
         remote_model_id: The HuggingFace model ID to load remote code from
         class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
         patch_fn: Function to patch the class method (e.g., forward function)
     """
-    from transformers.dynamic_module_utils import get_class_in_module
+    import importlib
 
     # Load the remote model configuration to trigger remote code download
     model_config = transformers.AutoConfig.from_pretrained(remote_model_id, trust_remote_code=True)
-
-    # Get the auto class to download modeling code without loading weights
-    with init_empty_weights():
-        transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
 
     # Derive the module name from the config
     parts = model_config.__class__.__module__.split(".")
     parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
     module_name = ".".join(parts)
+
+    # Try native transformers import first — works for models that are part
+    # of the transformers library (e.g. Qwen3.5, Gemma3, Llama4).
+    # This avoids the fragile get_class_in_module path entirely.
+    try:
+        module = importlib.import_module(module_name)
+        model_class = getattr(module, class_name)
+        setattr(model_class, "forward", patch_fn)
+        return
+    except (ImportError, AttributeError):
+        pass
+
+    # Fall back to remote code download for trust_remote_code models.
+    from transformers.dynamic_module_utils import get_class_in_module
+
+    # Use text_config for VLM models whose top-level config lacks vocab_size
+    # (e.g. ForConditionalGeneration models with nested text_config).
+    config_for_init = getattr(model_config, "text_config", model_config)
+
+    # Use AutoModel (not AutoModelForCausalLM) to handle both CausalLM and
+    # ConditionalGeneration architectures.
+    with init_empty_weights():
+        transformers.AutoModel.from_config(config_for_init, trust_remote_code=True)
 
     # Use get_class_in_module. This can be patched downstream (for ex: in Axolotl).
     model_class = get_class_in_module(class_name, module_name)
