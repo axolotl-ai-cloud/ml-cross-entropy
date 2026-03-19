@@ -53,6 +53,7 @@ def linear_cross_entropy(
     filter_c_grad: bool = True,
     impl: str | LinearCrossEntropyImpl = LCE_IMPL_DEFAULT,
     vocab_parallel_options: VocabParallelOptions | None = None,
+    zero3_params: list[torch.nn.Parameter] | None = None,
 ) -> torch.Tensor:
     """
     :param impl: The linear cross entropy implementation to use. Currently supports cce, torch_compile, and cce_exact.
@@ -109,6 +110,7 @@ def linear_cross_entropy(
             shift,
             **cce_opts,
             vocab_parallel_options=vocab_parallel_options,
+            zero3_params=zero3_params,
         )
     elif impl == "torch_compile":
         return torch_compile_linear_cross_entropy(

@@ -134,6 +134,17 @@ def apply_lce(
     else:
         c_local = c
 
+    # Under DeepSpeed ZeRO-3, lm_head.weight is sharded across ranks.
+    # Pass the original nn.Parameter references so the backward pass can
+    # re-gather the full tensors via GatheredParameters.
+    zero3_params: list[torch.nn.Parameter] = []
+    if hasattr(c, "ds_id"):
+        zero3_params.append(c)
+    if bias is not None and hasattr(bias, "ds_id"):
+        zero3_params.append(bias)
+    if zero3_params:
+        cce_kwargs["zero3_params"] = zero3_params
+
     if c.dtype == torch.bfloat16 and e.dtype == torch.float32:
         # specifically only handling the case we've seen with DoRA where it outputs float32 when the weights are bfloat16
         e = e.to(c.dtype)

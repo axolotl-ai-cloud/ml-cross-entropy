@@ -1,5 +1,6 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
-from dataclasses import dataclass
+from contextlib import nullcontext
+from dataclasses import dataclass, field
 from typing import cast
 
 import torch
@@ -35,6 +36,7 @@ class CCEParams:
     filter_e_grad: bool
     filter_c_grad: bool
     vocab_parallel_options: VocabParallelOptions | None
+    zero3_params: list[torch.nn.Parameter] = field(default_factory=list)
 
 
 @torch.compile(fullgraph=True)
@@ -174,26 +176,44 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
             reduce_e_grad = vp_opts.reduce_e_grad
             pg = vp_opts.group
 
-        de, dc, dbias = cce_backward_kernel(
-            do=grad_out,
-            e=e,
-            c=c,
-            bias=bias,
-            lse=lse,
-            valids=valids,
-            softcap=params.softcap,
-            filter_eps=params.filter_eps,
-            targets=targets,
-            shift=params.shift,
-            vocab_ordering=vocab_ordering,
-            grad_scale=grad_scale,
-            accum_e_fp32=params.accum_e_fp32,
-            accum_c_fp32=params.accum_c_fp32,
-            filter_e_grad=params.filter_e_grad,
-            filter_c_grad=params.filter_c_grad,
-            reduce_e_grad=reduce_e_grad,
-            pg=pg,
-        )
+        # Under DeepSpeed ZeRO-3, saved tensors for c/bias may be stale
+        # local shards. Re-gather the full parameters before backward.
+        if params.zero3_params:
+            from deepspeed.runtime.zero.partition_parameters import GatheredParameters
+
+            gather_ctx = GatheredParameters(params.zero3_params, modifier_rank=None)
+        else:
+            gather_ctx = nullcontext()
+
+        with gather_ctx:
+            if params.zero3_params:
+                # After gathering, read the full weight/bias from the
+                # parameter objects since the saved tensor references
+                # point to the (now-stale) local shards.
+                c = params.zero3_params[0].data
+                if len(params.zero3_params) > 1:
+                    bias = params.zero3_params[1].data
+
+            de, dc, dbias = cce_backward_kernel(
+                do=grad_out,
+                e=e,
+                c=c,
+                bias=bias,
+                lse=lse,
+                valids=valids,
+                softcap=params.softcap,
+                filter_eps=params.filter_eps,
+                targets=targets,
+                shift=params.shift,
+                vocab_ordering=vocab_ordering,
+                grad_scale=grad_scale,
+                accum_e_fp32=params.accum_e_fp32,
+                accum_c_fp32=params.accum_c_fp32,
+                filter_e_grad=params.filter_e_grad,
+                filter_c_grad=params.filter_c_grad,
+                reduce_e_grad=reduce_e_grad,
+                pg=pg,
+            )
 
         return de, dc, dbias, None
 
@@ -230,6 +250,7 @@ def cce_linear_cross_entropy(
     filter_e_grad: bool = True,
     filter_c_grad: bool = True,
     vocab_parallel_options: VocabParallelOptions | None = None,
+    zero3_params: list[torch.nn.Parameter] | None = None,
 ) -> torch.Tensor:
     assert e.size()[0:-1] == targets.size()
     assert e.size(-1) == c.size(1)
@@ -267,6 +288,7 @@ def cce_linear_cross_entropy(
         filter_e_grad=filter_e_grad and filter_eps is not None,
         filter_c_grad=filter_c_grad and filter_eps is not None,
         vocab_parallel_options=vocab_parallel_options,
+        zero3_params=zero3_params or [],
     )
 
     return linear_cross_entropy_apply(e, c, bias, cce_params)
