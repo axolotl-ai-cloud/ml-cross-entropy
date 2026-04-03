@@ -26,6 +26,8 @@ PATCH_FNS = {
     "gemma3_text": ("cut_cross_entropy.transformers.gemma3", "patch_gemma3_text"),
     "gemma3n": ("cut_cross_entropy.transformers.gemma3n", "patch_gemma3n"),
     "gemma3n_text": ("cut_cross_entropy.transformers.gemma3n", "patch_gemma3n_text"),
+    "gemma4": ("cut_cross_entropy.transformers.gemma4", "patch_gemma4"),
+    "gemma4_text": ("cut_cross_entropy.transformers.gemma4", "patch_gemma4_text"),
     "glm": ("cut_cross_entropy.transformers.glm4", "patch_glm"),
     "glm4": ("cut_cross_entropy.transformers.glm4", "patch_glm4"),
     "glm4_moe": ("cut_cross_entropy.transformers.glm4", "patch_glm4_moe"),
