@@ -1,4 +1,4 @@
-"""Cohere2Moe CCE patch. Cohere2Moe inherits Cohere2. Adapted from transformers 5.10.1."""
+"""Cohere2Moe CCE patch. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
