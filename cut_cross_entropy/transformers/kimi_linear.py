@@ -1,4 +1,4 @@
-"""Kimi Linear CCE patch. Adapted from moonshotai/Kimi-Linear-48B-A3B-Instruct revision fd1de63."""
+"""Kimi Linear CCE patch. Adapted from moonshotai/Kimi-Linear-48B-A3B-Instruct revision e1df551."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -17,13 +17,11 @@
 # limitations under the License.
 
 from types import MethodType
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import torch
 import transformers
-from transformers.modeling_outputs import (
-    MoeCausalLMOutputWithPast,
-)
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -44,10 +42,23 @@ def cce_forward_kimi(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
     generation_mode: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
     cache_position: Optional[torch.LongTensor] = None,
     **kwargs,
-):
+) -> Union[tuple, CausalLMOutputWithPast]:
+    output_attentions = (
+        output_attentions if output_attentions is not None else self.config.output_attentions
+    )
+    output_hidden_states = (
+        output_hidden_states
+        if output_hidden_states is not None
+        else self.config.output_hidden_states
+    )
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -55,8 +66,10 @@ def cce_forward_kimi(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
         cache_position=cache_position,
-        **kwargs,
     )
 
     hidden_states = outputs[0]
@@ -82,24 +95,8 @@ def cce_forward_kimi(
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
-    aux_loss = None
-    if kwargs.get("output_router_logits", False):
-        from transformers.models.switch_transformers.modeling_switch_transformers import (
-            load_balancing_loss_func,
-        )
-
-        aux_loss = load_balancing_loss_func(
-            outputs.router_logits,
-            num_experts=self.config.num_experts,
-            top_k=self.config.num_experts_per_token,
-            attention_mask=attention_mask,
-        )
-        if loss is not None:
-            loss = loss + self.config.router_aux_loss_coef * aux_loss
-
-    return MoeCausalLMOutputWithPast(
+    return CausalLMOutputWithPast(
         loss=loss,
-        aux_loss=aux_loss,
         logits=logits,
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
@@ -138,6 +135,7 @@ def patch_kimi_linear(
     # Try to import and patch the class directly from transformers
     try:
         from transformers.models.kimi_linear import modeling_kimi_linear
+
         modeling_kimi_linear.KimiLinearForCausalLM.forward = cce_forward_kimi
     except ImportError:
         raise ImportError(
