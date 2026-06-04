@@ -23,6 +23,7 @@ PATCH_FNS = {
     "deepseek_v3": ("cut_cross_entropy.transformers.deepseek_v3", "patch_deepseek_v3"),
     "deepseek_v4": ("cut_cross_entropy.transformers.deepseek_v4", "patch_deepseek_v4"),
     "exaone4": ("cut_cross_entropy.transformers.exaone4", "patch_exaone4"),
+    "exaone_moe": ("cut_cross_entropy.transformers.exaone_moe", "patch_exaone_moe"),
     "gemma": ("cut_cross_entropy.transformers.gemma", "patch_gemma"),
     "gemma2": ("cut_cross_entropy.transformers.gemma3", "patch_gemma2"),
     "gemma3": ("cut_cross_entropy.transformers.gemma3", "patch_gemma3"),
