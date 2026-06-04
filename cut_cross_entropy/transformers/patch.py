@@ -28,6 +28,11 @@ PATCH_FNS = {
     "gemma3n_text": ("cut_cross_entropy.transformers.gemma3n", "patch_gemma3n_text"),
     "gemma4": ("cut_cross_entropy.transformers.gemma4", "patch_gemma4"),
     "gemma4_text": ("cut_cross_entropy.transformers.gemma4", "patch_gemma4_text"),
+    "gemma4_unified": ("cut_cross_entropy.transformers.gemma4_unified", "patch_gemma4_unified"),
+    "gemma4_unified_text": (
+        "cut_cross_entropy.transformers.gemma4_unified",
+        "patch_gemma4_unified_text",
+    ),
     "glm": ("cut_cross_entropy.transformers.glm4", "patch_glm"),
     "glm4": ("cut_cross_entropy.transformers.glm4", "patch_glm4"),
     "glm4_moe": ("cut_cross_entropy.transformers.glm4", "patch_glm4_moe"),
