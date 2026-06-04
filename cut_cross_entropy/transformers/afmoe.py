@@ -100,7 +100,7 @@ def cce_forward_afmoe(
 
 
 def patch_afmoe(
-    maybe_model: TransformersModelT,
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
