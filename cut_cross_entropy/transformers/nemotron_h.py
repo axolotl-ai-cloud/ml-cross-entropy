@@ -1,4 +1,4 @@
-"""NemotronH CCE patch. Adapted from nvidia/Nemotron-H-47B-Base-FP8."""
+"""NemotronH CCE patch. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,7 +21,6 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
@@ -37,38 +36,23 @@ _PATCH_OPTS: PatchOptions | None = None
 def cce_forward_nemotron_h(
     self,
     input_ids: Optional[torch.LongTensor] = None,
-    inputs_embeds: Optional[torch.FloatTensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values=None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
     use_cache: Optional[bool] = None,
-    cache_position: Optional[torch.Tensor] = None,
-    attention_mask: Optional[torch.Tensor] = None,
+    logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[tuple, CausalLMOutputWithPast]:
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
     outputs = self.model(
-        input_ids,
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        return_dict=return_dict,
         use_cache=use_cache,
-        cache_position=cache_position,
-        attention_mask=attention_mask,
+        **kwargs,
     )
 
     hidden_states = outputs[0]
@@ -76,29 +60,26 @@ def cce_forward_nemotron_h(
     loss = None
     logits = None
 
+    # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
+
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
 
         loss = apply_lce(
-            hidden_states,
+            hidden_states[:, slice_indices, :],
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
             **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states.to(self.lm_head.weight.dtype)).float()
+        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
 
         if labels is not None:
-            labels = labels.to(logits.device)
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-
-    if not return_dict:
-        output = (logits,) + outputs[1:]
-        return ((loss,) + output) if loss is not None else output
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
     return CausalLMOutputWithPast(
         loss=loss,
@@ -110,7 +91,7 @@ def cce_forward_nemotron_h(
 
 
 def patch_nemotron_h(
-    maybe_model: TransformersModelT,
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
