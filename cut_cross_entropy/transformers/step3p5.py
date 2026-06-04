@@ -1,4 +1,4 @@
-"""Step3p5 CCE patch. Adapted from stepfun-ai/Step-3.5-Flash revision 8fb8cbc."""
+"""Step3p5 CCE patch. Adapted from stepfun-ai/Step-3.5-Flash revision ab446a3."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 from types import MethodType
 from typing import Optional, Union
 
@@ -81,6 +82,10 @@ def cce_forward_step3p5(
     loss = None
     logits = None
 
+    # The base model's forward returns only logits and computes no loss (it ignores
+    # ``labels``); we supply the loss here so the model trains under CCE. The else-branch's
+    # ``self.loss_function`` resolves to the stock ForCausalLMLoss, since the model defines
+    # none and ``config.loss_type`` is None.
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
 
@@ -95,9 +100,18 @@ def cce_forward_step3p5(
         logits = self.lm_head(hidden_states)
 
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+            # Step3p5ForCausalLM does not set self.vocab_size (only Step3p5Model does),
+            # so read it from the config to avoid an AttributeError on this path.
+            loss = self.loss_function(logits, labels, self.config.vocab_size, **kwargs)
 
-    return CausalLMOutputWithPast(
+    # The remote model returns a model-specific Step3p5CausalLMOutputWithPast; resolve it
+    # from the live class so we return the same type, falling back to the stock output.
+    output_cls = getattr(
+        sys.modules.get(type(self).__module__),
+        "Step3p5CausalLMOutputWithPast",
+        CausalLMOutputWithPast,
+    )
+    return output_cls(
         loss=loss,
         logits=logits,
         past_key_values=outputs.past_key_values,
@@ -107,7 +121,7 @@ def cce_forward_step3p5(
 
 
 def patch_step3p5(
-    maybe_model: TransformersModelT,
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
@@ -136,6 +150,7 @@ def patch_step3p5(
     # Try to import and patch the class directly from transformers
     try:
         from transformers.models.step3p5 import modeling_step3p5
+
         modeling_step3p5.Step3p5ForCausalLM.forward = cce_forward_step3p5
     except ImportError:
         raise ImportError(

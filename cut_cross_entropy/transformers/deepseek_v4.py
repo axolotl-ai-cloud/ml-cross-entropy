@@ -1,4 +1,4 @@
-"""Qwen3_next CCE patch. It inherits Mixtral. Adapted from transformers 5.10.1."""
+"""DeepseekV4 CCE patch. DeepseekV4 inherits from Mixtral. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -27,7 +27,7 @@ from cut_cross_entropy.transformers.utils import (
 )
 
 
-def patch_qwen3_next(
+def patch_deepseek_v4(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
@@ -35,24 +35,25 @@ def patch_qwen3_next(
     from . import mixtral as mixtral_patch
 
     mixtral_patch._PATCH_OPTS = patch_options
+
     cce_forward = mixtral_patch.cce_forward
 
     if remote_model_id is not None:
         patch_remote_model_class(
             remote_model_id=remote_model_id,
-            class_name="Qwen3NextForCausalLM",
+            class_name="DeepseekV4ForCausalLM",
             patch_fn=cce_forward,
         )
         return None
 
-    from transformers.models.qwen3_next import modeling_qwen3_next
+    from transformers.models.deepseek_v4 import modeling_deepseek_v4
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(maybe_model, modeling_qwen3_next.Qwen3NextForCausalLM), (
-            f"Expected a Qwen3NextForCausalLM model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_deepseek_v4.DeepseekV4ForCausalLM), (
+            f"Expected a DeepseekV4ForCausalLM model. Got {type(maybe_model)}."
         )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
-    modeling_qwen3_next.Qwen3NextForCausalLM.forward = cce_forward
+    modeling_deepseek_v4.DeepseekV4ForCausalLM.forward = cce_forward
     return None

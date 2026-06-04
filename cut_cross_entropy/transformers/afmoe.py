@@ -1,4 +1,4 @@
-"""Afmoe CCE patch. Adapted from arcee-ai/Trinity-Nano-Preview revision 889c8c4."""
+"""Afmoe CCE patch. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -42,11 +42,16 @@ def cce_forward_afmoe(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
+    output_router_logits: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
-    token_type_ids: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> Union[tuple, MoeCausalLMOutputWithPast]:
+    output_router_logits = (
+        output_router_logits
+        if output_router_logits is not None
+        else self.config.output_router_logits
+    )
+
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -54,7 +59,7 @@ def cce_forward_afmoe(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        cache_position=cache_position,
+        output_router_logits=output_router_logits,
         **kwargs,
     )
 
@@ -95,7 +100,7 @@ def cce_forward_afmoe(
 
 
 def patch_afmoe(
-    maybe_model: TransformersModelT,
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
@@ -124,6 +129,7 @@ def patch_afmoe(
     # Try to import and patch the class directly from transformers
     try:
         from transformers.models.afmoe import modeling_afmoe
+
         modeling_afmoe.AfmoeForCausalLM.forward = cce_forward_afmoe
     except ImportError:
         raise ImportError(

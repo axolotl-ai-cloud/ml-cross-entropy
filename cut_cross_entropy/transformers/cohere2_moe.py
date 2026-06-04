@@ -1,4 +1,4 @@
-"""NemotronH CCE patch. Adapted from transformers 5.10.1."""
+"""Cohere2Moe CCE patch. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,12 +16,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Patch scales the hidden states by the logit scale in advance instead of the logits as the
+# operation is done internally and should be mathematically equivalent.
+
 from types import MethodType
 from typing import Optional, Union
 
 import torch
 import transformers
-from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.cache_utils import Cache
+from transformers.modeling_outputs import MoeCausalLMOutputWithPast, MoeModelOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -33,19 +37,19 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
-def cce_forward_nemotron_h(
+def cce_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values=None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
-) -> Union[tuple, CausalLMOutputWithPast]:
-    outputs = self.model(
+) -> MoeCausalLMOutputWithPast:
+    outputs: MoeModelOutputWithPast = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
@@ -55,8 +59,7 @@ def cce_forward_nemotron_h(
         **kwargs,
     )
 
-    hidden_states = outputs[0]
-
+    hidden_states = outputs.last_hidden_state
     loss = None
     logits = None
 
@@ -67,63 +70,60 @@ def cce_forward_nemotron_h(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-
+        # scale hidden_states by logit_scale in-place of logits
         loss = apply_lce(
-            hidden_states[:, slice_indices, :],
+            hidden_states[:, slice_indices, :] * self.logit_scale,
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
             **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = logits * self.logit_scale
 
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
+            )
 
-    return CausalLMOutputWithPast(
+    return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
+        router_logits=outputs.router_logits,
     )
 
 
-def patch_nemotron_h(
+def patch_cohere2_moe(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    """Patch NemotronH for CCE."""
     global _PATCH_OPTS
     _PATCH_OPTS = patch_options
 
     if remote_model_id is not None:
         patch_remote_model_class(
             remote_model_id=remote_model_id,
-            class_name="NemotronHForCausalLM",
-            patch_fn=cce_forward_nemotron_h,
+            class_name="Cohere2MoeForCausalLM",
+            patch_fn=cce_forward,
         )
         return None
 
+    from transformers.models.cohere2_moe import modeling_cohere2_moe
+
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        model_class_name = maybe_model.__class__.__name__
-        if model_class_name == "NemotronHForCausalLM":
-            maybe_model.forward = MethodType(cce_forward_nemotron_h, maybe_model)
-            return maybe_model
-        else:
-            raise ValueError(f"Expected NemotronHForCausalLM, got {model_class_name}")
-
-    # Try to import and patch the class directly from transformers
-    try:
-        from transformers.models.nemotron_h import modeling_nemotron_h
-
-        modeling_nemotron_h.NemotronHForCausalLM.forward = cce_forward_nemotron_h
-    except ImportError:
-        raise ImportError(
-            "Could not find module to patch. Either ensure remote code is enabled "
-            "or check if transformers has the modeling code integrated for this model type"
+        assert isinstance(maybe_model, modeling_cohere2_moe.Cohere2MoeForCausalLM), (
+            f"Expected a Cohere2MoeForCausalLM model. Got {type(maybe_model)}."
         )
+        maybe_model.forward = MethodType(cce_forward, maybe_model)
+        return maybe_model
 
+    modeling_cohere2_moe.Cohere2MoeForCausalLM.forward = cce_forward
     return None

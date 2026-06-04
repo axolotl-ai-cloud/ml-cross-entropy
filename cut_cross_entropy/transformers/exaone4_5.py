@@ -1,4 +1,4 @@
-"""NemotronH CCE patch. Adapted from transformers 5.10.1."""
+"""Exaone4_5 (VLM) CCE patch. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -17,10 +17,11 @@
 # limitations under the License.
 
 from types import MethodType
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import transformers
+from transformers.cache_utils import Cache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
@@ -33,32 +34,41 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
-def cce_forward_nemotron_h(
+def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values=None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
+    pixel_values: Optional[torch.Tensor] = None,
+    pixel_values_videos: Optional[torch.FloatTensor] = None,
+    image_grid_thw: Optional[torch.LongTensor] = None,
+    video_grid_thw: Optional[torch.LongTensor] = None,
+    second_per_grid_ts: Optional[torch.Tensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
-) -> Union[tuple, CausalLMOutputWithPast]:
+) -> Union[Tuple, CausalLMOutputWithPast]:
     outputs = self.model(
         input_ids=input_ids,
-        attention_mask=attention_mask,
+        pixel_values=pixel_values,
+        pixel_values_videos=pixel_values_videos,
+        image_grid_thw=image_grid_thw,
+        video_grid_thw=video_grid_thw,
+        second_per_grid_ts=second_per_grid_ts,
         position_ids=position_ids,
+        attention_mask=attention_mask,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         **kwargs,
     )
 
-    hidden_states = outputs[0]
-
-    loss = None
+    hidden_states = outputs.last_hidden_state
     logits = None
+    loss = None
 
     # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
     slice_indices = (
@@ -67,7 +77,6 @@ def cce_forward_nemotron_h(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-
         loss = apply_lce(
             hidden_states[:, slice_indices, :],
             self.lm_head.weight,
@@ -76,10 +85,15 @@ def cce_forward_nemotron_h(
             **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :]).float()
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
+            )
 
     return CausalLMOutputWithPast(
         loss=loss,
@@ -90,40 +104,30 @@ def cce_forward_nemotron_h(
     )
 
 
-def patch_nemotron_h(
+def patch_exaone4_5(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    """Patch NemotronH for CCE."""
     global _PATCH_OPTS
     _PATCH_OPTS = patch_options
 
     if remote_model_id is not None:
         patch_remote_model_class(
             remote_model_id=remote_model_id,
-            class_name="NemotronHForCausalLM",
-            patch_fn=cce_forward_nemotron_h,
+            class_name="Exaone4_5_ForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
         )
         return None
 
+    from transformers.models.exaone4_5 import modeling_exaone4_5
+
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        model_class_name = maybe_model.__class__.__name__
-        if model_class_name == "NemotronHForCausalLM":
-            maybe_model.forward = MethodType(cce_forward_nemotron_h, maybe_model)
-            return maybe_model
-        else:
-            raise ValueError(f"Expected NemotronHForCausalLM, got {model_class_name}")
-
-    # Try to import and patch the class directly from transformers
-    try:
-        from transformers.models.nemotron_h import modeling_nemotron_h
-
-        modeling_nemotron_h.NemotronHForCausalLM.forward = cce_forward_nemotron_h
-    except ImportError:
-        raise ImportError(
-            "Could not find module to patch. Either ensure remote code is enabled "
-            "or check if transformers has the modeling code integrated for this model type"
+        assert isinstance(maybe_model, modeling_exaone4_5.Exaone4_5_ForConditionalGeneration), (
+            f"Expected a Exaone4_5_ForConditionalGeneration model. Got {type(maybe_model)}."
         )
+        maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
+        return maybe_model
 
+    modeling_exaone4_5.Exaone4_5_ForConditionalGeneration.forward = cce_forward_multimodal
     return None
