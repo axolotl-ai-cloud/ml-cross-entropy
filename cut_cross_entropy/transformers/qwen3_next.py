@@ -1,4 +1,4 @@
-"""Qwen3_next CCE patch. It inherits Mixtral. Adapted from transformers Qwen3_next PR."""
+"""Qwen3_next CCE patch. It inherits Mixtral. Adapted from transformers 5.10.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
