@@ -66,6 +66,9 @@ def cce_forward_multimodal(
         else self.config.output_hidden_states
     )
 
+    # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,

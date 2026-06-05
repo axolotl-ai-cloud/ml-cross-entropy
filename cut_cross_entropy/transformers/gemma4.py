@@ -56,11 +56,8 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **lm_kwargs,
 ) -> Gemma4CausalLMOutputWithPast:
-    # Remove keys we pass explicitly to avoid "multiple values" errors.
+    # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
     lm_kwargs.pop("return_dict", None)
-    lm_kwargs.pop("output_attentions", None)
-    lm_kwargs.pop("output_hidden_states", None)
-    lm_kwargs.pop("cache_position", None)
 
     outputs = self.model(
         input_ids=input_ids,

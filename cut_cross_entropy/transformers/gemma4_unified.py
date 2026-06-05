@@ -116,6 +116,9 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **lm_kwargs,
 ) -> Gemma4UnifiedCausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
+    lm_kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,

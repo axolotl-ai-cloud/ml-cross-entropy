@@ -141,6 +141,9 @@ def cce_forward_multimodal(
         else self.config.output_hidden_states
     )
 
+    # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
+    lm_kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,
@@ -156,7 +159,7 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
-        # return_dict=True,  # will cause multiple return_dict error in self.model forward
+        return_dict=True,
         **lm_kwargs,
     )
 
