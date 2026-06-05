@@ -171,29 +171,37 @@ def patch_remote_model_class(
     patch_fn: Callable,
 ) -> None:
     """
-    Load remote model code and patch a specific class method.
+    Load a model class and patch a specific class method.
 
     Args:
         remote_model_id: The HuggingFace model ID to load remote code from
         class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
         patch_fn: Function to patch the class method (e.g., forward function)
     """
-    from transformers.dynamic_module_utils import get_class_in_module
+    import importlib
 
-    # Load the remote model configuration to trigger remote code download
+    # Load the model configuration. For trust_remote_code models this also
+    # triggers download of the remote configuration code.
     model_config = transformers.AutoConfig.from_pretrained(remote_model_id, trust_remote_code=True)
 
-    # Get the auto class to download modeling code without loading weights
-    with init_empty_weights():
-        transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
-
-    # Derive the module name from the config
+    # Derive the modeling module name from the config.
     parts = model_config.__class__.__module__.split(".")
     parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
     module_name = ".".join(parts)
 
-    # Use get_class_in_module. This can be patched downstream (for ex: in Axolotl).
-    model_class = get_class_in_module(class_name, module_name)
+    try:
+        # Try import from installed transformer package first
+        model_class = getattr(importlib.import_module(module_name), class_name)
+    except (ImportError, AttributeError):
+        from transformers.dynamic_module_utils import get_class_in_module
 
-    # Patch the forward method
+        # trust_remote_code model: trigger the remote-code download into the HF
+        # modules cache, then resolve the class from there.
+        with init_empty_weights():
+            transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
+
+        # get_class_in_module can be patched downstream (for ex: in Axolotl).
+        model_class = get_class_in_module(class_name, module_name)
+
+    # Patch the forward method.
     setattr(model_class, "forward", patch_fn)
