@@ -82,10 +82,6 @@ def cce_forward_step3p5(
     loss = None
     logits = None
 
-    # The base model's forward returns only logits and computes no loss (it ignores
-    # ``labels``); we supply the loss here so the model trains under CCE. The else-branch's
-    # ``self.loss_function`` resolves to the stock ForCausalLMLoss, since the model defines
-    # none and ``config.loss_type`` is None.
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
 
@@ -100,12 +96,8 @@ def cce_forward_step3p5(
         logits = self.lm_head(hidden_states)
 
         if labels is not None:
-            # Step3p5ForCausalLM does not set self.vocab_size (only Step3p5Model does),
-            # so read it from the config to avoid an AttributeError on this path.
             loss = self.loss_function(logits, labels, self.config.vocab_size, **kwargs)
 
-    # The remote model returns a model-specific Step3p5CausalLMOutputWithPast; resolve it
-    # from the live class so we return the same type, falling back to the stock output.
     output_cls = getattr(
         sys.modules.get(type(self).__module__),
         "Step3p5CausalLMOutputWithPast",
