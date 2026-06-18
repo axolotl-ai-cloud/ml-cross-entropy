@@ -96,6 +96,7 @@ PATCH_FNS = {
     "smollm3": ("cut_cross_entropy.transformers.smollm3", "patch_smollm3"),
     "seed_oss": ("cut_cross_entropy.transformers.seed_oss", "patch_seed_oss"),
     "step3p5": ("cut_cross_entropy.transformers.step3p5", "patch_step3p5"),
+    "step3p7": ("cut_cross_entropy.transformers.step3p7", "patch_step3p7"),
     "voxtral": ("cut_cross_entropy.transformers.voxtral", "patch_voxtral"),
 }
 

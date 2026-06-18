@@ -1,4 +1,4 @@
-"""Step3p5 CCE patch. Adapted from stepfun-ai/Step-3.5-Flash revision ab446a3."""
+"""Step3p7 CCE patch. Adapted from stepfun-ai/Step-3.7-Flash revision 5f62440."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -34,12 +34,14 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
-def cce_forward_step3p5(
+def cce_forward_step3p7(
     self,
     input_ids: torch.LongTensor = None,
+    pixel_values: Optional[torch.Tensor] = None,
     num_patches=None,
     patch_pixel_values=None,
     patch_newline_mask=None,
+    image_embeds: Optional[torch.FloatTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values=None,
@@ -96,11 +98,11 @@ def cce_forward_step3p5(
         logits = self.lm_head(hidden_states)
 
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.config.vocab_size, **kwargs)
+            loss = self.loss_function(logits, labels, self.config.text_config.vocab_size, **kwargs)
 
     output_cls = getattr(
         sys.modules.get(type(self).__module__),
-        "Step3p5CausalLMOutputWithPast",
+        "Step3p7CausalLMOutputWithPast",
         CausalLMOutputWithPast,
     )
     return output_cls(
@@ -112,12 +114,12 @@ def cce_forward_step3p5(
     )
 
 
-def patch_step3p5(
+def patch_step3p7(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    """Patch Step3p5 for CCE."""
+    """Patch Step3p7 for CCE."""
     global _PATCH_OPTS
     _PATCH_OPTS = patch_options
 
@@ -125,25 +127,25 @@ def patch_step3p5(
     if remote_model_id is not None:
         patch_remote_model_class(
             remote_model_id=remote_model_id,
-            class_name="Step3p5ForCausalLM",
-            patch_fn=cce_forward_step3p5,
+            class_name="Step3p7ForConditionalGeneration",
+            patch_fn=cce_forward_step3p7,
         )
         return None
 
     # Handle already instantiated model
     if isinstance(maybe_model, transformers.PreTrainedModel):
         model_class_name = maybe_model.__class__.__name__
-        if model_class_name == "Step3p5ForCausalLM":
-            maybe_model.forward = MethodType(cce_forward_step3p5, maybe_model)
+        if model_class_name == "Step3p7ForConditionalGeneration":
+            maybe_model.forward = MethodType(cce_forward_step3p7, maybe_model)
             return maybe_model
         else:
-            raise ValueError(f"Expected Step3p5ForCausalLM, got {model_class_name}")
+            raise ValueError(f"Expected Step3p7ForConditionalGeneration, got {model_class_name}")
 
     # Try to import and patch the class directly from transformers
     try:
-        from transformers.models.step3p5 import modeling_step3p5
+        from transformers.models.step3p7 import modeling_step3p7
 
-        modeling_step3p5.Step3p5ForCausalLM.forward = cce_forward_step3p5
+        modeling_step3p7.Step3p7ForConditionalGeneration.forward = cce_forward_step3p7
     except ImportError:
         raise ImportError(
             "Could not find module to patch. Either ensure remote code is enabled "
