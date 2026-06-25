@@ -1,4 +1,4 @@
-"""Qwen3_5 CCE patch. CausalLM inherits Qwen3 (Llama), ConditionalGeneration inherits Qwen3VL."""
+"""Qwen3_5 CCE patch. CausalLM inherits Qwen3 (Llama), ConditionalGeneration inherits Qwen3VL. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

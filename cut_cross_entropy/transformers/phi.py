@@ -1,4 +1,4 @@
-"""Phi CCE patch. Phi inherits Llama. Adapted from transformers 5.12.1."""
+"""Phi CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
