@@ -1,4 +1,4 @@
-"""Qwen2 VL CCE patch. Adapted from transformers v4.56.2."""
+"""Qwen2 VL CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -97,7 +97,10 @@ def cce_forward_multimodal(
 
         if labels is not None:
             loss = self.loss_function(
-                logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     return Qwen2VLCausalLMOutputWithPast(

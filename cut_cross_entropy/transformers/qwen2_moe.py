@@ -1,4 +1,4 @@
-"""Qwen2 MoE CCE patch. Adapted from transformers v4.56.2."""
+"""Qwen2 MoE CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -47,25 +47,14 @@ def cce_forward(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
     output_router_logits: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
-    **loss_kwargs,
+    **kwargs,
 ) -> MoeCausalLMOutputWithPast:
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
     output_router_logits = (
         output_router_logits
         if output_router_logits is not None
         else self.config.output_router_logits
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
     )
 
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -76,10 +65,8 @@ def cce_forward(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
         output_router_logits=output_router_logits,
-        cache_position=cache_position,
+        **kwargs,
     )
 
     hidden_states = outputs.last_hidden_state
@@ -98,13 +85,13 @@ def cce_forward(
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
-            **loss_kwargs,
+            **kwargs,
         )
     else:
         logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
     aux_loss = None
     if output_router_logits:

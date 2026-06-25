@@ -1,4 +1,4 @@
-"""Seed_OSS CCE patch. Inherits Llama. Adapted from transformers v4.56.2."""
+"""Seed_OSS CCE patch. Inherits Llama. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -47,14 +47,14 @@ def patch_seed_oss(
         )
         return None
 
-    from transformers.models.seed_oss import modular_seed_oss
+    from transformers.models.seed_oss import modeling_seed_oss
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(maybe_model, modular_seed_oss.SeedOssForCausalLM), (
+        assert isinstance(maybe_model, modeling_seed_oss.SeedOssForCausalLM), (
             f"Expected a SeedOssForCausalLM model. Got {type(maybe_model)}."
         )
         maybe_model.forward = MethodType(cce_forward, maybe_model)
         return maybe_model
 
-    modular_seed_oss.SeedOssForCausalLM.forward = cce_forward
+    modeling_seed_oss.SeedOssForCausalLM.forward = cce_forward
     return None

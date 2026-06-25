@@ -1,4 +1,4 @@
-"""Gemma4 CCE patch. Gemma4 text inherits Gemma3. Adapted from transformers 5.5.0."""
+"""Gemma4 (text and multimodal) CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,7 +21,6 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from torch import nn
 from transformers.cache_utils import Cache
 from transformers.models.gemma4.modeling_gemma4 import (
     Gemma4CausalLMOutputWithPast,
@@ -35,6 +34,75 @@ from cut_cross_entropy.transformers.utils import (
 )
 
 _PATCH_OPTS: PatchOptions | None = None
+
+
+def cce_forward(
+    self,
+    input_ids: Optional[torch.LongTensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values: Optional[Cache] = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    logits_to_keep: Union[int, torch.Tensor] = 0,
+    per_layer_inputs: Optional[torch.Tensor] = None,
+    **kwargs,
+) -> Gemma4CausalLMOutputWithPast:
+    # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+    outputs = self.model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=past_key_values,
+        inputs_embeds=inputs_embeds,
+        per_layer_inputs=per_layer_inputs,
+        use_cache=use_cache,
+        **kwargs,
+    )
+
+    hidden_states = outputs.last_hidden_state
+    loss = None
+    logits = None
+
+    # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
+
+    if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
+        assert labels is not None
+        loss = apply_lce(
+            hidden_states[:, slice_indices, :],
+            self.lm_head.weight,
+            labels,
+            _PATCH_OPTS,
+            softcap=self.config.final_logit_softcapping,
+            **kwargs,
+        )
+    else:
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        if self.config.final_logit_softcapping is not None:
+            logits = logits / self.config.final_logit_softcapping
+            logits = torch.tanh(logits)
+            logits = logits * self.config.final_logit_softcapping
+
+        if labels is not None:
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs,
+            )
+
+    return Gemma4CausalLMOutputWithPast(
+        loss=loss,
+        logits=logits,
+        past_key_values=outputs.past_key_values,
+        hidden_states=outputs.hidden_states,
+        attentions=outputs.attentions,
+        shared_kv_states=outputs.shared_kv_states,
+    )
 
 
 def cce_forward_multimodal(
@@ -54,6 +122,7 @@ def cce_forward_multimodal(
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    per_layer_inputs: Optional[torch.Tensor] = None,
     **lm_kwargs,
 ) -> Gemma4CausalLMOutputWithPast:
     # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
@@ -70,6 +139,7 @@ def cce_forward_multimodal(
         past_key_values=past_key_values,
         mm_token_type_ids=mm_token_type_ids,
         inputs_embeds=inputs_embeds,
+        per_layer_inputs=per_layer_inputs,
         labels=labels,
         use_cache=use_cache,
         image_position_ids=image_position_ids,
@@ -107,29 +177,12 @@ def cce_forward_multimodal(
             logits = logits * final_logit_softcapping
 
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            shift_logits = logits[..., :-1, :]
-            shift_labels = labels[..., 1:]
-            if attention_mask is not None:
-                # we use the input attention mask to shift the logits and labels, because it is 2D.
-                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(logits.device)
-                shift_logits = shift_logits[
-                    shift_attention_mask.to(logits.device) != 0
-                ].contiguous()
-                shift_labels = shift_labels[
-                    shift_attention_mask.to(shift_labels.device) != 0
-                ].contiguous()
-            else:
-                shift_logits = shift_logits.contiguous()
-                shift_labels = shift_labels.contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss()
-
-            flat_logits = shift_logits.view(-1, self.config.text_config.vocab_size)
-            flat_labels = shift_labels.view(-1).to(shift_logits.device)
-            loss = loss_fct(flat_logits, flat_labels)
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.get_text_config().vocab_size,
+                **lm_kwargs,
+            )
 
     return Gemma4CausalLMOutputWithPast(
         loss=loss,
@@ -147,10 +200,8 @@ def patch_gemma4_text(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    from . import gemma3 as gemma3_patch
-
-    gemma3_patch._PATCH_OPTS = patch_options
-    cce_forward = gemma3_patch.cce_forward
+    global _PATCH_OPTS
+    _PATCH_OPTS = patch_options
 
     if remote_model_id is not None:
         patch_remote_model_class(

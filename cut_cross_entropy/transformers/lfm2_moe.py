@@ -1,4 +1,4 @@
-"""Lfm2Moe CCE patch. Lfm2Moe inherits Mixtral. Adapted from transformers 4.57.0."""
+"""Lfm2Moe CCE patch. Lfm2Moe inherits Llama. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -32,12 +32,12 @@ def patch_lfm2_moe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    # Set the _PATCH_OPTS in the mixtral patch file
-    from . import mixtral as mixtral_patch
+    # Set the _PATCH_OPTS in the llama patch file
+    from . import llama as llama_patch
 
-    mixtral_patch._PATCH_OPTS = patch_options
+    llama_patch._PATCH_OPTS = patch_options
 
-    cce_forward = mixtral_patch.cce_forward
+    cce_forward = llama_patch.cce_forward
 
     if remote_model_id is not None:
         patch_remote_model_class(
