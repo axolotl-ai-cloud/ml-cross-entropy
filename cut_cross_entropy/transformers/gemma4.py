@@ -192,6 +192,7 @@ def cce_forward_multimodal(
         attentions=outputs.attentions,
         image_hidden_states=outputs.image_hidden_states,
         audio_hidden_states=outputs.audio_hidden_states,
+        shared_kv_states=outputs.shared_kv_states,
     )
 
 
