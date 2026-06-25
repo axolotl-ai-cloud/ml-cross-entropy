@@ -42,3 +42,4 @@ my_scripts/
 .model_cache/
 
 venv/
+build/

@@ -1,4 +1,4 @@
-"""GLM46V CCE patch. GLM46V inherits GLM4V. Adapted from transformers 5.0.0."""
+"""GLM46V CCE patch. GLM46V inherits GLM4V. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

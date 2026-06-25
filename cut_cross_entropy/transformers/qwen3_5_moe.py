@@ -1,4 +1,4 @@
-"""Qwen3_5 MoE CCE patch. CausalLM inherits Qwen3Next (Mixtral), ConditionalGeneration inherits Qwen3VLMoe."""
+"""Qwen3_5 MoE CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -66,13 +66,13 @@ def patch_qwen3_5_moe(
     from . import qwen3_vl as qwen3_vl_patch
 
     qwen3_vl_patch._PATCH_OPTS = patch_options
-    cce_forward_multimodal = qwen3_vl_patch.cce_forward_multimodal
+    cce_forward_multimodal_moe = qwen3_vl_patch.cce_forward_multimodal_moe
 
     if remote_model_id is not None:
         patch_remote_model_class(
             remote_model_id=remote_model_id,
             class_name="Qwen3_5MoeForConditionalGeneration",
-            patch_fn=cce_forward_multimodal,
+            patch_fn=cce_forward_multimodal_moe,
         )
         return None
 
@@ -82,8 +82,8 @@ def patch_qwen3_5_moe(
         assert isinstance(maybe_model, modeling_qwen3_5_moe.Qwen3_5MoeForConditionalGeneration), (
             f"Expected a Qwen3_5MoeForConditionalGeneration model. Got {type(maybe_model)}."
         )
-        maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
+        maybe_model.forward = MethodType(cce_forward_multimodal_moe, maybe_model)
         return maybe_model
 
-    modeling_qwen3_5_moe.Qwen3_5MoeForConditionalGeneration.forward = cce_forward_multimodal
+    modeling_qwen3_5_moe.Qwen3_5MoeForConditionalGeneration.forward = cce_forward_multimodal_moe
     return None
