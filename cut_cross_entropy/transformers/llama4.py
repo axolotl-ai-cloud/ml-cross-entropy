@@ -1,4 +1,4 @@
-"""Llama4 CCE patch. Adapted from transformers 4.56.2."""
+"""Llama4 CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -15,9 +15,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# This patch still uses the old VLM API as transformers
-# did not update Llama4 to the new API yet.
 
 from types import MethodType
 from typing import Optional, Tuple, Union
@@ -46,11 +43,10 @@ def cce_forward(
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
+    past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     defer_logits_calculation: bool = False,
     **kwargs,
@@ -62,7 +58,6 @@ def cce_forward(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        cache_position=cache_position,
         **kwargs,
     )
 
@@ -114,17 +109,18 @@ def cce_forward_multimodal(
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
-    vision_feature_layer: Optional[Union[int, list[int]]] = None,
     vision_feature_select_strategy: Optional[str] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[Tuple, Llama4CausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
+    kwargs.pop("return_dict", None)
+
     output_attentions = (
         output_attentions if output_attentions is not None else self.config.output_attentions
     )
@@ -133,7 +129,7 @@ def cce_forward_multimodal(
         if output_hidden_states is not None
         else self.config.output_hidden_states
     )
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+    return_dict = return_dict if return_dict is not None else self.config.return_dict
     vision_feature_select_strategy = (
         vision_feature_select_strategy
         if vision_feature_select_strategy is not None
@@ -155,7 +151,8 @@ def cce_forward_multimodal(
         image_features = self.get_image_features(
             pixel_values=pixel_values,
             vision_feature_select_strategy=vision_feature_select_strategy,
-        )
+            return_dict=True,
+        ).last_hidden_state
 
         vision_flat = image_features.view(-1, image_features.size(-1))
         projected_vision_flat = self.multi_modal_projector(vision_flat).to(
@@ -175,7 +172,6 @@ def cce_forward_multimodal(
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
-        cache_position=cache_position,
         logits_to_keep=logits_to_keep,
         defer_logits_calculation=True,  # enable deferred logits calculation
         **kwargs,
@@ -196,7 +192,9 @@ def cce_forward_multimodal(
             **kwargs,
         )
     else:
-        logits = hidden_states
+        # The language model deferred its logits projection (defer_logits_calculation=True),
+        # so hidden_states is the raw hidden state; project it to logits like upstream does.
+        logits = self.language_model.lm_head(hidden_states)
         if labels is not None:
             # Shift so that tokens < n predict n
             if attention_mask is not None:
