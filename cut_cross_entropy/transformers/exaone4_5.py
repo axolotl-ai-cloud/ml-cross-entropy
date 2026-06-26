@@ -1,4 +1,4 @@
-"""Exaone4_5 (VLM) CCE patch. Adapted from transformers 5.10.1."""
+"""Exaone4_5 (VLM) CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -47,7 +47,6 @@ def cce_forward_multimodal(
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
-    second_per_grid_ts: Optional[torch.Tensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
@@ -57,7 +56,6 @@ def cce_forward_multimodal(
         pixel_values_videos=pixel_values_videos,
         image_grid_thw=image_grid_thw,
         video_grid_thw=video_grid_thw,
-        second_per_grid_ts=second_per_grid_ts,
         position_ids=position_ids,
         attention_mask=attention_mask,
         past_key_values=past_key_values,

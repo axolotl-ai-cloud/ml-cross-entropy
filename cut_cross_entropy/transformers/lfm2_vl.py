@@ -46,7 +46,6 @@ def cce_forward_multimodal(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ):
@@ -60,7 +59,6 @@ def cce_forward_multimodal(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        cache_position=cache_position,
         **kwargs,
     )
 

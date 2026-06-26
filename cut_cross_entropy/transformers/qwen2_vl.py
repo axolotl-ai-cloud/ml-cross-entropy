@@ -45,26 +45,15 @@ def cce_forward_multimodal(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
     pixel_values: Optional[torch.Tensor] = None,
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
-    rope_deltas: Optional[torch.LongTensor] = None,
-    cache_position: Optional[torch.LongTensor] = None,
+    mm_token_type_ids: Optional[torch.IntTensor] = None,
+    logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[Tuple, Qwen2VLCausalLMOutputWithPast]:
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-
-    # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
     outputs = self.model(
@@ -73,15 +62,12 @@ def cce_forward_multimodal(
         pixel_values_videos=pixel_values_videos,
         image_grid_thw=image_grid_thw,
         video_grid_thw=video_grid_thw,
+        mm_token_type_ids=mm_token_type_ids,
         position_ids=position_ids,
         attention_mask=attention_mask,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        return_dict=True,
-        cache_position=cache_position,
         **kwargs,
     )
 
@@ -89,11 +75,18 @@ def cce_forward_multimodal(
     logits = None
     loss = None
 
+    # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
+
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        loss = apply_lce(hidden_states, self.lm_head.weight, labels, _PATCH_OPTS, **kwargs)
+        loss = apply_lce(
+            hidden_states[:, slice_indices, :], self.lm_head.weight, labels, _PATCH_OPTS, **kwargs
+        )
     else:
-        logits = self.lm_head(hidden_states)
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
             loss = self.loss_function(

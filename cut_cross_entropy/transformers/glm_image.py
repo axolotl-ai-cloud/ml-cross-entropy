@@ -46,7 +46,7 @@ def cce_forward_multimodal(
     labels: torch.LongTensor | None = None,
     pixel_values: torch.Tensor | None = None,
     image_grid_thw: torch.LongTensor | None = None,
-    cache_position: torch.LongTensor | None = None,
+    images_per_sample: torch.LongTensor | None = None,
     logits_to_keep: int | torch.Tensor = 0,
     **kwargs,
 ) -> Union[tuple, GlmImageCausalLMOutputWithPast]:
@@ -54,11 +54,11 @@ def cce_forward_multimodal(
         input_ids=input_ids,
         pixel_values=pixel_values,
         image_grid_thw=image_grid_thw,
+        images_per_sample=images_per_sample,
         position_ids=position_ids,
         attention_mask=attention_mask,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
-        cache_position=cache_position,
         **kwargs,
     )
 

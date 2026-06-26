@@ -45,30 +45,15 @@ def cce_forward(
     past_key_values: Optional[Union[Cache, list[torch.FloatTensor]]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
-    use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
     output_router_logits: Optional[bool] = None,
-    return_dict: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> MoeCausalLMOutputWithPast:
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
     output_router_logits = (
         output_router_logits
         if output_router_logits is not None
         else self.config.output_router_logits
     )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = self.model(
         input_ids=input_ids,
@@ -76,17 +61,11 @@ def cce_forward(
         position_ids=position_ids,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
-        use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        output_router_logits=output_router_logits,
-        return_dict=return_dict,
-        cache_position=cache_position,
         **kwargs,
     )
 
     # Only compute necessary logits
-    hidden_states = outputs[0]
+    hidden_states = outputs.last_hidden_state
     loss = None
     logits = None
     slice_indices = (
@@ -121,7 +100,7 @@ def cce_forward(
     aux_loss = None
     if output_router_logits:
         aux_loss = load_balancing_loss_func(
-            outputs.router_logits if return_dict else outputs[-1],
+            outputs.router_logits,
             self.num_experts,
             self.num_experts_per_tok,
             attention_mask,
@@ -130,12 +109,6 @@ def cce_forward(
             loss += self.router_aux_loss_coef * aux_loss.to(
                 loss.device
             )  # make sure to reside in the same device
-
-    if not return_dict:
-        output = (logits,) + outputs[1:]
-        if output_router_logits:
-            output = (aux_loss,) + output
-        return (loss,) + output if loss is not None else output
 
     return MoeCausalLMOutputWithPast(
         loss=loss,

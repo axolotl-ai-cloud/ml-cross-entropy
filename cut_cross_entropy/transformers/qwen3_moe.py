@@ -1,4 +1,4 @@
-"""Qwen3 MoE CCE patch. Adapted from transformers v4.56.2."""
+"""Qwen3 MoE CCE patch. Adapted from transformers 5.12.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -48,7 +48,6 @@ def cce_forward(
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     output_router_logits: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> MoeCausalLMOutputWithPast:
@@ -67,7 +66,6 @@ def cce_forward(
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         output_router_logits=output_router_logits,
-        cache_position=cache_position,
         **kwargs,
     )
 
