@@ -45,7 +45,6 @@ def cce_forward(
     vision_feature_layer: Optional[Union[int, list[int]]] = None,
     vision_feature_select_strategy: Optional[str] = None,
     labels: Optional[torch.LongTensor] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     image_sizes: Optional[torch.Tensor] = None,
     **kwargs,
@@ -70,7 +69,6 @@ def cce_forward(
         inputs_embeds=inputs_embeds,
         vision_feature_layer=vision_feature_layer,
         vision_feature_select_strategy=vision_feature_select_strategy,
-        cache_position=cache_position,
         image_sizes=image_sizes,
         **kwargs,
     )

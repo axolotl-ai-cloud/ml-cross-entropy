@@ -46,20 +46,9 @@ def cce_forward(
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **loss_kwargs,
 ) -> CausalLMOutputWithPast:
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = self.model(
         input_ids=input_ids,
@@ -68,9 +57,6 @@ def cce_forward(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
-        cache_position=cache_position,
         **loss_kwargs,
     )
 
@@ -122,24 +108,12 @@ def cce_forward_multimodal(
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
     token_type_ids: Optional[torch.LongTensor] = None,
-    cache_position: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
-    output_attentions: Optional[bool] = None,
-    output_hidden_states: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **lm_kwargs,
 ) -> Gemma3nCausalLMOutputWithPast:
-    output_attentions = (
-        output_attentions if output_attentions is not None else self.config.output_attentions
-    )
-    output_hidden_states = (
-        output_hidden_states
-        if output_hidden_states is not None
-        else self.config.output_hidden_states
-    )
-
     # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
     lm_kwargs.pop("return_dict", None)
 
@@ -152,12 +126,9 @@ def cce_forward_multimodal(
         position_ids=position_ids,
         past_key_values=past_key_values,
         token_type_ids=token_type_ids,
-        cache_position=cache_position,
         inputs_embeds=inputs_embeds,
         labels=labels,
         use_cache=use_cache,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states,
         return_dict=True,
         **lm_kwargs,
     )
