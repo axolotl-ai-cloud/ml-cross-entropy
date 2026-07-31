@@ -19,6 +19,8 @@ PATCH_FNS = {
     "cohere": ("cut_cross_entropy.transformers.cohere", "patch_cohere"),
     "cohere2": ("cut_cross_entropy.transformers.cohere", "patch_cohere2"),
     "cohere2_moe": ("cut_cross_entropy.transformers.cohere2_moe", "patch_cohere2_moe"),
+    "cohere2_vision": ("cut_cross_entropy.transformers.cohere2_vision", "patch_cohere2_vision"),
+    "cohere_compass": ("cut_cross_entropy.transformers.cohere_compass", "patch_cohere_compass"),
     "deepseek_v2": ("cut_cross_entropy.transformers.deepseek_v2", "patch_deepseek_v2"),
     "deepseek_v3": ("cut_cross_entropy.transformers.deepseek_v3", "patch_deepseek_v3"),
     "deepseek_v4": ("cut_cross_entropy.transformers.deepseek_v4", "patch_deepseek_v4"),
