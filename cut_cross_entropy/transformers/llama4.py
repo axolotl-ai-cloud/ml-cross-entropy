@@ -1,4 +1,4 @@
-"""Llama4 CCE patch. Adapted from transformers 5.12.1."""
+"""Llama4 CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -51,6 +51,9 @@ def cce_forward(
     defer_logits_calculation: bool = False,
     **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -217,11 +220,7 @@ def cce_forward_multimodal(
                 shift_labels.view(-1).to(shift_logits.device),
             )
 
-    if not return_dict:
-        output = (logits,) + outputs[1:]
-        return (loss,) + output if loss is not None else output
-
-    return Llama4CausalLMOutputWithPast(
+    output = Llama4CausalLMOutputWithPast(
         loss=loss,
         logits=logits,  # type: ignore  # TODO: check if need to create dummy logits
         past_key_values=outputs.past_key_values,
@@ -229,6 +228,7 @@ def cce_forward_multimodal(
         attentions=outputs.attentions,
         image_hidden_states=image_features if pixel_values is not None else None,
     )
+    return output if return_dict else output.to_tuple()
 
 
 def patch_llama4_text(

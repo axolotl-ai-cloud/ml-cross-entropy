@@ -1,4 +1,4 @@
-"""Phi3 CCE patch. Phi3 inherits Mistral which inherits Llama. Adapted from transformers 4.56.2."""
+"""Phi3 CCE patch. Phi3 inherits Mistral which inherits Llama. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

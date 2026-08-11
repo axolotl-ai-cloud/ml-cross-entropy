@@ -1,4 +1,4 @@
-"""Phi-4 Multimodal CCE patch. Adapted from transformers 4.56.2."""
+"""Phi-4 Multimodal CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -53,6 +53,9 @@ def cce_forward_multimodal(
     **kwargs,
 ) -> CausalLMOutputWithPast:
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,

@@ -1,4 +1,4 @@
-"""ExaoneMoe CCE patch. ExaoneMoe inherits Exaone4 (Llama). Adapted from transformers 5.10.1."""
+"""ExaoneMoe CCE patch. ExaoneMoe inherits Exaone4 (Llama). Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

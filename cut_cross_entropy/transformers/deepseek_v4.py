@@ -1,4 +1,4 @@
-"""DeepseekV4 CCE patch. DeepseekV4 inherits from Mixtral. Adapted from transformers 5.10.1."""
+"""DeepseekV4 CCE patch. DeepseekV4 inherits from Mixtral. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

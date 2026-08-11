@@ -1,4 +1,4 @@
-"""Qwen3 CCE patch. Qwen3 inherits Llama. Adapted from transformers 4.56.2."""
+"""Qwen3 CCE patch. Qwen3 inherits Llama. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

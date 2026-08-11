@@ -1,4 +1,4 @@
-"""Llama CCE patch. Adapted from transformers v4.56.2"""
+"""Llama CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -49,6 +49,9 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> CausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,

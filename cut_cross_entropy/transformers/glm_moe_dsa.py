@@ -1,4 +1,4 @@
-"""GLM MoE DSA (GLM-5) CCE patch. GlmMoeDsaForCausalLM -> DeepseekV32ForCausalLM -> Llama. Adapted from transformers 5.12.1."""
+"""GLM MoE DSA (GLM-5) CCE patch. GlmMoeDsaForCausalLM -> DeepseekV32ForCausalLM -> Llama. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

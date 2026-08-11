@@ -1,4 +1,4 @@
-"""Llava CCE patch. Adapted from transformers 4.57.0."""
+"""Llava CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -49,6 +49,9 @@ def cce_forward(
     image_sizes: Optional[torch.Tensor] = None,
     **kwargs,
 ):
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     vision_feature_layer = (
         vision_feature_layer
         if vision_feature_layer is not None

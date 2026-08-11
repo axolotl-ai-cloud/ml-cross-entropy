@@ -1,4 +1,4 @@
-"""Afmoe CCE patch. Adapted from transformers 5.10.1."""
+"""Afmoe CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -35,7 +35,7 @@ _PATCH_OPTS: PatchOptions | None = None
 
 def cce_forward_afmoe(
     self,
-    input_ids: torch.LongTensor,
+    input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
     past_key_values=None,
@@ -46,6 +46,9 @@ def cce_forward_afmoe(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[tuple, MoeCausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     output_router_logits = (
         output_router_logits
         if output_router_logits is not None

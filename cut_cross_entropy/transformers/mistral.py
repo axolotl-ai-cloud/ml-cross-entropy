@@ -1,4 +1,4 @@
-"""Mistral CCE patch. Mistral inherits Llama. Adapted from transformers 4.56.2."""
+"""Mistral CCE patch. Mistral inherits Llama. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

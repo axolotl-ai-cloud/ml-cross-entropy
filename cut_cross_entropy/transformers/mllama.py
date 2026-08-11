@@ -1,4 +1,4 @@
-"""Mllama CCE patch. Adapted from transformers 4.56.2."""
+"""Mllama CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -53,6 +53,9 @@ def cce_forward(
     **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         cross_attention_states=cross_attention_states,
@@ -115,6 +118,9 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,

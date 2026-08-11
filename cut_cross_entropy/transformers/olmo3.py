@@ -1,4 +1,4 @@
-"""OLMO patch. It inherits from Llama. Adapted from transformers 4.57.1."""
+"""OLMO patch. It inherits from Llama. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -23,12 +23,14 @@ import transformers
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
+    patch_remote_model_class,
 )
 
 
 def patch_olmo(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
@@ -36,6 +38,14 @@ def patch_olmo(
     llama_patch._PATCH_OPTS = patch_options
 
     cce_forward = llama_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="OlmoForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.olmo import modeling_olmo
 
@@ -53,6 +63,7 @@ def patch_olmo(
 def patch_olmo2(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
@@ -60,6 +71,14 @@ def patch_olmo2(
     llama_patch._PATCH_OPTS = patch_options
 
     cce_forward = llama_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Olmo2ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.olmo2 import modeling_olmo2
 
@@ -77,6 +96,7 @@ def patch_olmo2(
 def patch_olmo3(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the llama patch file
     from . import llama as llama_patch
@@ -84,6 +104,14 @@ def patch_olmo3(
     llama_patch._PATCH_OPTS = patch_options
 
     cce_forward = llama_patch.cce_forward
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Olmo3ForCausalLM",
+            patch_fn=cce_forward,
+        )
+        return None
 
     from transformers.models.olmo3 import modeling_olmo3
 

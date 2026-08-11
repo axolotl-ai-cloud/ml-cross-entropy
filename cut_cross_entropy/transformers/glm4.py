@@ -1,4 +1,4 @@
-"""GLM 4 patch. GLM family inherits from Llama. Adapted from transformers 4.56.2."""
+"""GLM 4 patch. GLM family inherits from Llama. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

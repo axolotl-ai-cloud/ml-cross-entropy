@@ -1,4 +1,4 @@
-"""InternVL CCE patch. InternVL inherits Llava. Adapted from transformers 4.57.0."""
+"""InternVL CCE patch. Adapted from transformers 5.15."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,15 +16,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from types import MethodType
 
 import transformers
+from transformers.models.internvl.modeling_internvl import InternVLCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     patch_remote_model_class,
 )
+
+from . import llava as llava_patch
+
+
+# InternVL's forward body is identical to Llava's, but it returns its own output dataclass
+# (same fields, unrelated type), so re-box rather than duplicating the forward.
+@functools.wraps(llava_patch.cce_forward)
+def cce_forward(self, *args, **kwargs) -> InternVLCausalLMOutputWithPast:
+    outputs = llava_patch.cce_forward(self, *args, **kwargs)
+    return InternVLCausalLMOutputWithPast(**outputs)
 
 
 def patch_internvl(
@@ -33,11 +45,7 @@ def patch_internvl(
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the llava patch file
-    from . import llava as llava_patch
-
     llava_patch._PATCH_OPTS = patch_options
-
-    cce_forward = llava_patch.cce_forward
 
     if remote_model_id is not None:
         patch_remote_model_class(
