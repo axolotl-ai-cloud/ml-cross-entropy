@@ -186,12 +186,20 @@ def cce_forward_multimodal(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        # TODO: check if need to handle attention_mask
+        # Mirror upstream's attention-mask filtering via ignore_index on pre-shifted labels.
+        # Inert when packing or when pads are already -100; caller shift_labels wins.
+        shift_labels = kwargs.pop("shift_labels", None)
+        if shift_labels is None and attention_mask is not None:
+            shift_labels = nn.functional.pad(labels, (0, 1), value=-100)[..., 1:]
+            shift_attention_mask = attention_mask[:, -(hidden_states.shape[1] - 1) :]
+            shift_attention_mask = nn.functional.pad(shift_attention_mask, (0, 1), value=0)
+            shift_labels = shift_labels.masked_fill(shift_attention_mask == 0, -100)
         loss = apply_lce(
             hidden_states,
             self.language_model.lm_head.weight,
             labels,
             _PATCH_OPTS,
+            shift_labels=shift_labels,
             **kwargs,
         )
     else:
