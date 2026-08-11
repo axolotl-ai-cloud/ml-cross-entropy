@@ -63,6 +63,9 @@ def cce_forward_step3p7(
         else self.config.output_hidden_states
     )
 
+    # Mirrors upstream: `pixel_values` / `image_embeds` are named params here and are not
+    # forwarded, so Step3p7Model._parse_and_validate_image_input bails early and images are
+    # dropped (patch_pixel_values alone does not gate it). Kept as-is rather than diverging.
     outputs = self.model(
         input_ids=input_ids,
         num_patches=num_patches,
