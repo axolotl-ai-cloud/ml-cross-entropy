@@ -101,6 +101,7 @@ def apply_lce(
     opts: PatchOptions,
     bias: torch.Tensor | None = None,
     softcap: float | None = None,
+    shift_labels: torch.Tensor | None = None,
     **loss_kwargs,
 ) -> torch.Tensor:
     num_items_in_batch = loss_kwargs.get("num_items_in_batch", None)
@@ -149,12 +150,20 @@ def apply_lce(
         # specifically only handling the case we've seen with DoRA where it outputs float32 when the weights are bfloat16
         e = e.to(c.dtype)
 
+    # Sequence/context parallelism supplies pre-shifted `shift_labels`, which upstream's
+    # ForCausalLMLoss uses as-is instead of shifting `labels`. Mirror that: shifting again
+    # would train position i to predict token i+2.
+    if shift_labels is not None:
+        targets, shift = shift_labels, 0
+    else:
+        targets, shift = labels, True
+
     loss = linear_cross_entropy(
         e,
         c_local,
-        labels.to(e.device),
+        targets.to(e.device),
         bias=bias,
-        shift=True,
+        shift=shift,
         softcap=softcap,
         **cce_kwargs,
     )
