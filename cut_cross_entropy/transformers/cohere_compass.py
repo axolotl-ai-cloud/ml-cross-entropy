@@ -1,4 +1,4 @@
-"""CohereCompass CCE patch. Adapted from transformers 5.16.0.dev0 (cohere_compass, unreleased)."""
+"""CohereCompass CCE patch. Adapted from transformers 5.16.0.dev0."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
