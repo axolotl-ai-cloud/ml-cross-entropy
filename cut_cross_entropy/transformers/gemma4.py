@@ -49,6 +49,9 @@ def cce_forward(
     per_layer_inputs: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> Gemma4CausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = self.model(
         input_ids=input_ids,
