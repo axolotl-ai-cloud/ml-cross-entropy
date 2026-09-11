@@ -99,6 +99,7 @@ def cce_forward_multimodal(
                 logits=logits,
                 labels=labels,
                 vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     return Qwen3VLCausalLMOutputWithPast(
@@ -170,6 +171,7 @@ def cce_forward_multimodal_moe(
                 logits=logits,
                 labels=labels,
                 vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     aux_loss = None

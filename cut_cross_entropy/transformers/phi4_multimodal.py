@@ -93,7 +93,7 @@ def cce_forward_multimodal(
     else:
         logits = self.lm_head(hidden_states[:, slice_indices, :])
         if labels is not None:
-            loss = self.loss_function(logits, labels, self.vocab_size)
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
     return CausalLMOutputWithPast(
         loss=loss,
