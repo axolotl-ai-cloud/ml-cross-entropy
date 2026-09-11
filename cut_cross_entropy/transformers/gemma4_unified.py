@@ -1,4 +1,4 @@
-"""Gemma4Unified (text and multimodal) CCE patch. Adapted from transformers 5.10.1."""
+"""Gemma4Unified (text and multimodal) CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -48,6 +48,9 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Gemma4UnifiedCausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,

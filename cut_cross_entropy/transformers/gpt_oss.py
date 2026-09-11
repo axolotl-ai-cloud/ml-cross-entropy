@@ -1,4 +1,4 @@
-"""GPT_OSS CCE patch. GPT_OSS inherits Mixtral. Adapted from transformers 4.56.2."""
+"""GPT_OSS CCE patch. GPT_OSS inherits Mixtral. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

@@ -1,4 +1,4 @@
-"""Qwen2.5 VL CCE patch. Adapted from transformers 5.12.1."""
+"""Qwen2.5 VL CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

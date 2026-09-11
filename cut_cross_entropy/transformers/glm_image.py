@@ -1,4 +1,4 @@
-"""GLM-Image CCE patch. Adapted from transformers 5.0.0."""
+"""GLM-Image CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -50,6 +50,9 @@ def cce_forward_multimodal(
     logits_to_keep: int | torch.Tensor = 0,
     **kwargs,
 ) -> Union[tuple, GlmImageCausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,
@@ -85,7 +88,10 @@ def cce_forward_multimodal(
 
         if labels is not None:
             loss = self.loss_function(
-                logits=logits, labels=labels, vocab_size=self.config.text_config.vocab_size
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     return GlmImageCausalLMOutputWithPast(

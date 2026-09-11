@@ -1,4 +1,4 @@
-"""GLM46V CCE patch. GLM46V inherits GLM4V. Adapted from transformers 5.12.1."""
+"""GLM46V CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,15 +16,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from types import MethodType
 
 import transformers
+from transformers.models.glm46v.modeling_glm46v import Glm46VCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     patch_remote_model_class,
 )
+
+from . import glm4v as glm4v_patch
+
+
+# GLM46V's forward body matches GLM4V's but returns its own output dataclass (same fields,
+# unrelated type), so re-box rather than duplicating the forward.
+@functools.wraps(glm4v_patch.cce_forward_multimodal)
+def cce_forward_multimodal(self, *args, **kwargs) -> Glm46VCausalLMOutputWithPast:
+    outputs = glm4v_patch.cce_forward_multimodal(self, *args, **kwargs)
+    return Glm46VCausalLMOutputWithPast(**outputs)
 
 
 def patch_glm46v(
@@ -33,11 +45,7 @@ def patch_glm46v(
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     # Set the _PATCH_OPTS in the glm4v patch file
-    from . import glm4v as glm4v_patch
-
     glm4v_patch._PATCH_OPTS = patch_options
-
-    cce_forward_multimodal = glm4v_patch.cce_forward_multimodal
 
     if remote_model_id is not None:
         patch_remote_model_class(

@@ -1,4 +1,4 @@
-"""OLMoE CCE patch. It inherits from Mixtral. Adapted from transformers 5.1.0"""
+"""OLMoE CCE patch. It inherits from Mixtral. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

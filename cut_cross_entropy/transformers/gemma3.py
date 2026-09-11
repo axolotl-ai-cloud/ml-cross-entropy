@@ -1,4 +1,4 @@
-"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 4.56.2."""
+"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -24,7 +24,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 import transformers
-from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.gemma3.modeling_gemma3 import (
@@ -54,6 +53,9 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **loss_kwargs,
 ) -> CausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    loss_kwargs.pop("return_dict", None)
+
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs: BaseModelOutputWithPast = self.model(
         input_ids=input_ids,
@@ -157,29 +159,12 @@ def cce_forward_multimodal(
     else:
         logits = self.lm_head(hidden_states[:, slice_indices, :])
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            shift_logits = logits[..., :-1, :]
-            shift_labels = labels[..., 1:]
-            if attention_mask is not None:
-                # we use the input attention mask to shift the logits and labels, because it is 2D.
-                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(logits.device)
-                shift_logits = shift_logits[
-                    shift_attention_mask.to(logits.device) != 0
-                ].contiguous()
-                shift_labels = shift_labels[
-                    shift_attention_mask.to(shift_labels.device) != 0
-                ].contiguous()
-            else:
-                shift_logits = shift_logits.contiguous()
-                shift_labels = shift_labels.contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss()
-
-            flat_logits = shift_logits.view(-1, self.config.text_config.vocab_size)
-            flat_labels = shift_labels.view(-1).to(shift_logits.device)
-            loss = loss_fct(flat_logits, flat_labels)
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **lm_kwargs,
+            )
 
     return Gemma3CausalLMOutputWithPast(
         loss=loss,

@@ -1,4 +1,4 @@
-"""Qwen4Exp (text and multimodal) CCE patch. CausalLM inherits Mixtral. Adapted from transformers 5.16.1."""
+"""Qwen4Exp (text and multimodal) CCE patch. CausalLM inherits Mixtral. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -96,6 +96,7 @@ def cce_forward_multimodal(
                 logits=logits,
                 labels=labels,
                 vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     aux_loss = None

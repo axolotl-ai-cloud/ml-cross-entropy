@@ -1,4 +1,4 @@
-"""Granite MoE CCE patch. Adapted from transformers v4.56.2."""
+"""Granite MoE CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -49,6 +49,9 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> MoeCausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     output_router_logits = (
         output_router_logits
         if output_router_logits is not None
@@ -87,8 +90,6 @@ def cce_forward(
         logits = logits / self.config.logits_scaling  # main diff from Llama
 
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
             # Flatten the tokens
             loss = self.loss_function(
                 logits,

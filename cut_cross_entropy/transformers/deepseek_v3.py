@@ -1,4 +1,4 @@
-"""DeepseekV3 patch. DeepseekV3 inherits from Llama. Adapted from transformers 4.56.2."""
+"""DeepseekV3 patch. DeepseekV3 inherits from Llama. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

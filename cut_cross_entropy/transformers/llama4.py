@@ -1,4 +1,4 @@
-"""Llama4 CCE patch. Adapted from transformers 5.12.1."""
+"""Llama4 CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,7 +21,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 import transformers
-from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.llama4.modeling_llama4 import (
@@ -51,6 +50,9 @@ def cce_forward(
     defer_logits_calculation: bool = False,
     **kwargs,
 ) -> Union[Tuple, CausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -183,7 +185,6 @@ def cce_forward_multimodal(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        # TODO: check if need to handle attention_mask
         loss = apply_lce(
             hidden_states,
             self.language_model.lm_head.weight,
@@ -196,32 +197,14 @@ def cce_forward_multimodal(
         # so hidden_states is the raw hidden state; project it to logits like upstream does.
         logits = self.language_model.lm_head(hidden_states)
         if labels is not None:
-            # Shift so that tokens < n predict n
-            if attention_mask is not None:
-                # we use the input attention mask to shift the logits and labels, because it is 2D.
-                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
-                shift_logits = logits[..., :-1, :][
-                    shift_attention_mask.to(logits.device) != 0
-                ].contiguous()
-                shift_labels = labels[..., 1:][
-                    shift_attention_mask.to(labels.device) != 0
-                ].contiguous()
-            else:
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1).to(shift_logits.device),
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
-    if not return_dict:
-        output = (logits,) + outputs[1:]
-        return (loss,) + output if loss is not None else output
-
-    return Llama4CausalLMOutputWithPast(
+    output = Llama4CausalLMOutputWithPast(
         loss=loss,
         logits=logits,  # type: ignore  # TODO: check if need to create dummy logits
         past_key_values=outputs.past_key_values,
@@ -229,6 +212,7 @@ def cce_forward_multimodal(
         attentions=outputs.attentions,
         image_hidden_states=image_features if pixel_values is not None else None,
     )
+    return output if return_dict else output.to_tuple()
 
 
 def patch_llama4_text(

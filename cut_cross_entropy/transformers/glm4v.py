@@ -1,4 +1,4 @@
-"""GLM4V CCE patch. Adapted from transformers 5.12.1."""
+"""GLM4V CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -55,6 +55,9 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[tuple, Glm4vCausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,
@@ -85,13 +88,17 @@ def cce_forward_multimodal(
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
+            **kwargs,
         )
     else:
         logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
             loss = self.loss_function(
-                logits=logits, labels=labels, vocab_size=self.config.text_config.vocab_size
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     return Glm4vCausalLMOutputWithPast(
@@ -120,6 +127,9 @@ def cce_forward_multimodal_moe(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
 ) -> Union[tuple, Glm4vMoeCausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,
@@ -150,13 +160,17 @@ def cce_forward_multimodal_moe(
             self.lm_head.weight,
             labels,
             _PATCH_OPTS,
+            **kwargs,
         )
     else:
         logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         if labels is not None:
             loss = self.loss_function(
-                logits=logits, labels=labels, vocab_size=self.config.text_config.vocab_size
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     aux_loss = None

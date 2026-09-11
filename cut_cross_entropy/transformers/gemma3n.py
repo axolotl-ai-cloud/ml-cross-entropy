@@ -1,4 +1,4 @@
-"""Gemma3n CCE patch. Adapted from transformers 5.12.1."""
+"""Gemma3n CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -49,6 +49,9 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **loss_kwargs,
 ) -> CausalLMOutputWithPast:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    loss_kwargs.pop("return_dict", None)
+
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     outputs = self.model(
         input_ids=input_ids,
