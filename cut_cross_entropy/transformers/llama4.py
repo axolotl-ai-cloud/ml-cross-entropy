@@ -21,7 +21,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 import transformers
-from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.llama4.modeling_llama4 import (
@@ -186,20 +185,11 @@ def cce_forward_multimodal(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        # Mirror upstream's attention-mask filtering via ignore_index on pre-shifted labels.
-        # Inert when packing or when pads are already -100; caller shift_labels wins.
-        shift_labels = kwargs.pop("shift_labels", None)
-        if shift_labels is None and attention_mask is not None:
-            shift_labels = nn.functional.pad(labels, (0, 1), value=-100)[..., 1:]
-            shift_attention_mask = attention_mask[:, -(hidden_states.shape[1] - 1) :]
-            shift_attention_mask = nn.functional.pad(shift_attention_mask, (0, 1), value=0)
-            shift_labels = shift_labels.masked_fill(shift_attention_mask == 0, -100)
         loss = apply_lce(
             hidden_states,
             self.language_model.lm_head.weight,
             labels,
             _PATCH_OPTS,
-            shift_labels=shift_labels,
             **kwargs,
         )
     else:
@@ -207,25 +197,11 @@ def cce_forward_multimodal(
         # so hidden_states is the raw hidden state; project it to logits like upstream does.
         logits = self.language_model.lm_head(hidden_states)
         if labels is not None:
-            # Shift so that tokens < n predict n
-            if attention_mask is not None:
-                # we use the input attention mask to shift the logits and labels, because it is 2D.
-                # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                shift_attention_mask = attention_mask[:, -(logits.shape[1] - 1) :].to(logits.device)
-                shift_logits = logits[..., :-1, :][
-                    shift_attention_mask.to(logits.device) != 0
-                ].contiguous()
-                shift_labels = labels[..., 1:][
-                    shift_attention_mask.to(labels.device) != 0
-                ].contiguous()
-            else:
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1).to(shift_logits.device),
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
             )
 
     output = Llama4CausalLMOutputWithPast(
