@@ -1,4 +1,4 @@
-"""GLM4 MoE Lite CCE patch. GLM4 MoE Lite inherits Llama. Adapted from transformers 5.15."""
+"""GLM4 MoE Lite CCE patch. GLM4 MoE Lite inherits Llama. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

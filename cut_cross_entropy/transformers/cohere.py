@@ -1,4 +1,4 @@
-"""Cohere and Cohere2 CCE patch. Adapted from transformers 5.15."""
+"""Cohere and Cohere2 CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

@@ -1,4 +1,4 @@
-"""HunYuan V1 CCE patch. It inherits Llama. Adapted from transformers 5.15."""
+"""HunYuan V1 CCE patch. It inherits Llama. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

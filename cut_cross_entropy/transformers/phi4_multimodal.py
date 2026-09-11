@@ -1,4 +1,4 @@
-"""Phi-4 Multimodal CCE patch. Adapted from transformers 5.15."""
+"""Phi-4 Multimodal CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

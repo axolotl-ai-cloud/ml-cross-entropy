@@ -1,4 +1,4 @@
-"""Lfm2 CCE patch. Lfm2 inherits Llama. Adapted from transformers 5.15."""
+"""Lfm2 CCE patch. Lfm2 inherits Llama. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

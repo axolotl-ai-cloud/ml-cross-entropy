@@ -1,4 +1,4 @@
-"""SmolLM3 CCE patch. SmolLM3 inherits Llama. Adapted from transformers 5.15."""
+"""SmolLM3 CCE patch. SmolLM3 inherits Llama. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

@@ -1,4 +1,4 @@
-"""Gemma CCE patch. Gemma inherits from llama. Adapted from transformers 5.15."""
+"""Gemma CCE patch. Gemma inherits from llama. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
