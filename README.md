@@ -120,6 +120,40 @@ Triton >= 3.2, contiguous classifier weights, `accum_c_fp32=True`, and
 Smaller chunks reduce peak memory but add launches and can reduce throughput.
 Frozen classifiers bypass classifier chunking.
 
+The optional `recommend_c_grad_chunk_size` helper chooses an integer to pass to
+the loss. It runs independently of the loss and kernel:
+
+```python
+from cut_cross_entropy import recommend_c_grad_chunk_size
+
+chunk_size = recommend_c_grad_chunk_size(
+    num_tokens=valid_prediction_tokens,
+    vocab_size=classifier.size(0),
+    hidden_size=classifier.size(1),
+    device=classifier.device,
+)
+loss = linear_cross_entropy(
+    embeddings, classifier, labels,
+    accum_e_fp32=True,
+    accum_c_fp32=True,
+    c_grad_chunk_size=chunk_size,
+)
+```
+
+This heuristic targets eight backward programs per GPU SM and caps temporary
+FP32 classifier scratch at 1 GiB. Override `target_programs` or
+`max_scratch_bytes` to change those tradeoffs. An explicit program target avoids
+querying CUDA properties, so a recommendation can also be computed during setup.
+It estimates parallelism; it does not measure current GPU utilization or guarantee
+optimal throughput. The returned `0` selects full accumulation for small heads
+or empty batches.
+
+Use valid prediction tokens in one local microbatch, accounting for label masking
+and causal shifting when known. A batch-token estimate is also usable. DDP world
+size and gradient-accumulation steps are not multipliers. For vocabulary
+parallelism, pass the local classifier shard's row count; for FSDP, use the head
+shape seen after gathering for the forward pass.
+
 Two-rank tests cover vocabulary parallelism (including FP32 embedding-gradient
 reduction before casting), DDP, and FSDP2 with resharding, mixed precision,
 microbatch accumulation, and optimizer updates:
@@ -143,7 +177,8 @@ PYTORCH_ALLOC_CONF=expandable_segments:False \
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
 compute-sanitizer --tool memcheck --padding 256 --error-exitcode 99 \
   --target-processes all python -m pytest -q \
-  tests/test_chunked_accumulation.py tests/test_chunked_memory.py
+  tests/test_chunked_accumulation.py tests/test_chunked_memory.py \
+  tests/test_chunk_recommendation.py
 ```
 
 Disabling allocator caching and adding guard padding exposes allocation-boundary

@@ -340,11 +340,12 @@ def _store_classifier_chunk(
     Scratch, Output, Ordering, Start, Count, D, HAS_ORDERING: tl.constexpr, BLOCK: tl.constexpr
 ):
     offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < tl.cast(Count, tl.int64) * D
     rows = offsets // D + Start
     if HAS_ORDERING:
-        rows = tl.load(Ordering + rows, mask=offsets < Count * D, other=0).to(tl.int64)
-    values = tl.load(Scratch + offsets, mask=offsets < Count * D, other=0.0)
-    tl.store(Output + rows * D + offsets % D, values, mask=offsets < Count * D)
+        rows = tl.load(Ordering + rows, mask=mask, other=0).to(tl.int64)
+    values = tl.load(Scratch + offsets, mask=mask, other=0.0)
+    tl.store(Output + rows * D + offsets % D, values, mask=mask)
 
 
 def cce_backward_kernel(
