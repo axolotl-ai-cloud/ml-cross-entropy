@@ -97,6 +97,60 @@ There are several other implementations available depending on your needs.
 The CCE kernel is designed to work with bf16/fp16 inputs and provides good numerical stability for most use cases. However, for models with very large vocabularies or very long sequence lengths, you may want to consider using the `cce_kahan` implementation which uses Kahan summation (or fp32 accumulation for Triton >= 3.2) to improve numerical precision. This comes at the cost of more memory usage but can be beneficial for training stability.
 
 
+### Experimental chunked classifier accumulation
+
+For a trainable classifier, `c_grad_chunk_size` bounds the temporary FP32
+classifier-gradient buffer to that many vocabulary rows. Each chunk accumulates
+across all tokens before being cast into the final gradient; the buffer is then
+reused. The full-vocabulary normalization and gradient filtering are preserved.
+The option is also available on the `LinearCrossEntropy` module.
+
+```python
+loss = linear_cross_entropy(
+    embeddings, classifier, labels,
+    accum_e_fp32=True,
+    accum_c_fp32=True,
+    c_grad_chunk_size=32768,
+)
+```
+
+The default `0` keeps the full accumulator. The experimental path requires
+Triton >= 3.2, contiguous classifier weights, `accum_c_fp32=True`, and
+`CCE_AUTOTUNE=0` (the default). Chunk sizes must be positive multiples of 128.
+Smaller chunks reduce peak memory but add launches and can reduce throughput.
+Frozen classifiers bypass classifier chunking.
+
+Two-rank tests cover vocabulary parallelism (including FP32 embedding-gradient
+reduction before casting), DDP, and FSDP2 with resharding, mixed precision,
+microbatch accumulation, and optimizer updates:
+
+```bash
+pytest tests/test_chunked_distributed.py
+```
+
+These tests use small models and tensors; they do not establish full-model
+training throughput or DeepSpeed ZeRO-3 compatibility.
+
+Boundary tests cover partial final chunks, token and hidden-dimension tile edges,
+and nonzero storage offsets in FP16/BF16. To detect out-of-bounds or misaligned
+CUDA accesses, run the following from the repository root with a CUDA GPU and
+Compute Sanitizer available:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. CCE_AUTOTUNE=0 \
+PYTORCH_NO_CUDA_MEMORY_CACHING=1 \
+PYTORCH_ALLOC_CONF=expandable_segments:False \
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
+compute-sanitizer --tool memcheck --padding 256 --error-exitcode 99 \
+  --target-processes all python -m pytest -q \
+  tests/test_chunked_accumulation.py tests/test_chunked_memory.py
+```
+
+Disabling allocator caching and adding guard padding exposes allocation-boundary
+errors. Sanitizer errors or failed tests produce a nonzero exit code. Verify that
+the GPU tests run rather than skip; plain pytest checks numerical results and
+input integrity but does not replace sanitizer instrumentation.
+
 ### Vocabulary Parallelism
 
 We also support computing linear cross-entropy loss for classifier weights sharded

@@ -10,6 +10,8 @@ from cut_cross_entropy.cce_lse_forward import cce_lse_forward_kernel
 from cut_cross_entropy.constants import IGNORE_INDEX
 from cut_cross_entropy.doc import CCE_OPTS_DOC, LINEAR_CROSS_ENTROPY_DOC, add_doc_start
 from cut_cross_entropy.indexed_dot import indexed_neg_dot_forward_kernel
+from cut_cross_entropy.tl_autotune import _AUTOTUNE
+from cut_cross_entropy.tl_utils import is_triton_greater_or_equal_3_2_0
 from cut_cross_entropy.utils import (
     _build_flat_valids,
     _handle_eps,
@@ -37,6 +39,7 @@ class CCEParams:
     filter_c_grad: bool
     vocab_parallel_options: VocabParallelOptions | None
     zero3_params: list[torch.nn.Parameter] = field(default_factory=list)
+    c_grad_chunk_size: int = 0
 
 
 @torch.compile(fullgraph=True)
@@ -213,6 +216,7 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
                 filter_c_grad=params.filter_c_grad,
                 reduce_e_grad=reduce_e_grad,
                 pg=pg,
+                c_grad_chunk_size=params.c_grad_chunk_size,
             )
 
         return de, dc, dbias, None
@@ -251,7 +255,21 @@ def cce_linear_cross_entropy(
     filter_c_grad: bool = True,
     vocab_parallel_options: VocabParallelOptions | None = None,
     zero3_params: list[torch.nn.Parameter] | None = None,
+    c_grad_chunk_size: int = 0,
 ) -> torch.Tensor:
+    if not isinstance(c_grad_chunk_size, int) or c_grad_chunk_size < 0 or c_grad_chunk_size % 128:
+        raise ValueError("c_grad_chunk_size must be zero or a positive integer multiple of 128")
+    if c_grad_chunk_size and c.requires_grad:
+        if not accum_c_fp32 or not is_triton_greater_or_equal_3_2_0():
+            raise ValueError(
+                "Chunked classifier accumulation requires FP32 accumulation and Triton >= 3.2"
+            )
+        if _AUTOTUNE:
+            raise ValueError("Chunked classifier accumulation currently requires CCE_AUTOTUNE=0")
+        if not c.is_contiguous():
+            raise ValueError(
+                "Chunked classifier accumulation currently requires contiguous classifier weights"
+            )
     assert e.size()[0:-1] == targets.size()
     assert e.size(-1) == c.size(1)
     if not torch.cuda.is_bf16_supported():
@@ -289,6 +307,7 @@ def cce_linear_cross_entropy(
         filter_c_grad=filter_c_grad and filter_eps is not None,
         vocab_parallel_options=vocab_parallel_options,
         zero3_params=zero3_params or [],
+        c_grad_chunk_size=c_grad_chunk_size,
     )
 
     return linear_cross_entropy_apply(e, c, bias, cce_params)
