@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 
 from cut_cross_entropy import linear_cross_entropy
-from cut_cross_entropy.cce_backward import _store_classifier_chunk
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
@@ -62,24 +61,3 @@ def test_chunked_memory_boundaries(
     torch.testing.assert_close(e, original_e, rtol=0, atol=0)
     torch.testing.assert_close(c, original_c, rtol=0, atol=0)
     torch.testing.assert_close(targets, original_targets, rtol=0, atol=0)
-
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-@pytest.mark.parametrize("has_ordering", [False, True])
-@pytest.mark.parametrize("chunk_size", [131072 - 128, 131072, 131072 + 128])
-def test_store_classifier_chunk_large_element_count(dtype, has_ordering, chunk_size):
-    """Copy masks must handle chunk element counts at and above 2**31."""
-    block = 1024
-    hidden = 16384
-    scratch = torch.arange(block, device="cuda", dtype=torch.float32)
-    output = torch.full((block,), float("nan"), device="cuda", dtype=dtype)
-    ordering = torch.zeros(1, device="cuda", dtype=torch.int32) if has_ordering else None
-
-    # A partial launch exercises the large logical count without allocating multi-GiB buffers.
-    _store_classifier_chunk[(1,)](
-        scratch, output, ordering, 0, chunk_size, hidden, has_ordering, block
-    )
-    torch.cuda.synchronize()
-
-    torch.testing.assert_close(output, scratch.to(dtype), rtol=0, atol=0)

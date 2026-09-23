@@ -10,7 +10,6 @@ from cut_cross_entropy.cce_lse_forward import cce_lse_forward_kernel
 from cut_cross_entropy.constants import IGNORE_INDEX
 from cut_cross_entropy.doc import CCE_OPTS_DOC, LINEAR_CROSS_ENTROPY_DOC, add_doc_start
 from cut_cross_entropy.indexed_dot import indexed_neg_dot_forward_kernel
-from cut_cross_entropy.tl_autotune import _AUTOTUNE
 from cut_cross_entropy.tl_utils import is_triton_greater_or_equal_3_2_0
 from cut_cross_entropy.utils import (
     _build_flat_valids,
@@ -263,12 +262,6 @@ def cce_linear_cross_entropy(
         if not accum_c_fp32 or not is_triton_greater_or_equal_3_2_0():
             raise ValueError(
                 "Chunked classifier accumulation requires FP32 accumulation and Triton >= 3.2"
-            )
-        if _AUTOTUNE:
-            raise ValueError("Chunked classifier accumulation currently requires CCE_AUTOTUNE=0")
-        if not c.is_contiguous():
-            raise ValueError(
-                "Chunked classifier accumulation currently requires contiguous classifier weights"
             )
     assert e.size()[0:-1] == targets.size()
     assert e.size(-1) == c.size(1)

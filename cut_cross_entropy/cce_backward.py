@@ -107,6 +107,8 @@ def _cce_backward_kernel(
     stride_ed,
     stride_cv,
     stride_cd,
+    stride_dcv,
+    stride_dcd,
     stride_biasv,
     stride_vb,
     filter_eps,
@@ -280,14 +282,14 @@ def _cce_backward_kernel(
 
             _mm_backward(
                 tl.trans(d_accum),
-                dC + (dc_v[:, None] * stride_cv),
-                dCC + (offs_v[:, None] * stride_cv) if KAHAN_C else None,
+                dC + (dc_v[:, None] * stride_dcv),
+                dCC + (offs_v[:, None] * stride_dcv) if KAHAN_C else None,
                 offs_v[:, None] < V,
                 dCLocks + lock_offset,
                 n_dc_locks_1,
                 E + (offs_b[:, None] * stride_eb),
                 offs_b[:, None] < BMax,
-                stride_cd,
+                stride_dcd,
                 stride_ed,
                 D,
                 MM_BACK_BLOCK_D,
@@ -335,19 +337,6 @@ _cce_backward_kernel = triton.heuristics(  # type: ignore
 _cce_backward_kernel = cce_backward_autotune()(_cce_backward_kernel)  # type: ignore
 
 
-@triton.jit
-def _store_classifier_chunk(
-    Scratch, Output, Ordering, Start, Count, D, HAS_ORDERING: tl.constexpr, BLOCK: tl.constexpr
-):
-    offsets = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < tl.cast(Count, tl.int64) * D
-    rows = offsets // D + Start
-    if HAS_ORDERING:
-        rows = tl.load(Ordering + rows, mask=mask, other=0).to(tl.int64)
-    values = tl.load(Scratch + offsets, mask=mask, other=0.0)
-    tl.store(Output + rows * D + offsets % D, values, mask=mask)
-
-
 def cce_backward_kernel(
     do: torch.Tensor,
     e: torch.Tensor,
@@ -389,10 +378,18 @@ def cce_backward_kernel(
     de_dtype = torch.float32 if (accum_e_fp32 and can_use_fp32_accum) else None
     de = torch.zeros_like(e, dtype=de_dtype) if e.requires_grad else None
 
+    assert c_grad_chunk_size >= 0 and c_grad_chunk_size % 128 == 0, (
+        "c_grad_chunk_size must be zero or a positive multiple of 128"
+    )
     chunked_c = c_grad_chunk_size > 0 and c.requires_grad and c_grad_chunk_size < c.size(0)
     chunk_size = c_grad_chunk_size if chunked_c else c.size(0)
     dc_dtype = torch.float32 if (accum_c_fp32 and can_use_fp32_accum) else None
     if chunked_c:
+        assert dc_dtype is torch.float32, (
+            "Chunked classifier accumulation requires accum_c_fp32=True and Triton >= 3.2"
+        )
+        # Reusable fp32 scratch covering one vocabulary chunk. The final gradient
+        # is assembled chunk by chunk in the classifier's dtype and layout.
         dc = torch.empty((chunk_size, c.size(1)), device=c.device, dtype=dc_dtype)
         dc_output = torch.empty_like(c)
     else:
@@ -410,7 +407,10 @@ def cce_backward_kernel(
         assert de.stride() == e.stride()
 
     if dc is not None:
-        assert dc.stride() == c.stride()
+        if chunked_c:
+            assert dc.is_contiguous()
+        else:
+            assert dc.stride() == c.stride()
 
     if dbias is not None:
         assert bias is not None
@@ -430,7 +430,7 @@ def cce_backward_kernel(
         assert dec.stride() == e.stride()
 
     if dcc is not None:
-        assert dcc.stride() == e.stride()
+        assert dcc.stride() == c.stride()
 
     if valids is not None:
         assert valids.ndim == 1
@@ -442,6 +442,8 @@ def cce_backward_kernel(
         do = do.contiguous()
         lse = lse.contiguous()
         assert do.stride(0) == lse.stride(0), f"{do.stride()=}, {lse.stride()=}"
+
+    dc_strides = (dc.stride(0), dc.stride(1)) if dc is not None else (c.stride(0), c.stride(1))
 
     def grid(META):
         return (triton.cdiv(B, META["BLOCK_B"]) * triton.cdiv(v_count, META["BLOCK_V"]),)
@@ -500,6 +502,7 @@ def cce_backward_kernel(
             e.stride(1),
             c.stride(0),
             c.stride(1),
+            *dc_strides,
             1 if bias is None else bias.stride(0),
             1 if valids is None else valids.stride(0),
             filter_eps,
@@ -510,16 +513,15 @@ def cce_backward_kernel(
             CHUNKED_C=chunked_c,
         )
         if chunked_c:
-            _store_classifier_chunk[(triton.cdiv(v_count * c.size(1), 1024),)](
-                dc,
-                dc_output,
-                vocab_ordering,
-                v_start,
-                v_count,
-                c.size(1),
-                HAS_ORDERING=vocab_ordering is not None,
-                BLOCK=1024,
-            )
+            # Cast this chunk into its final rows. With a vocab ordering, scratch row i
+            # holds the gradient for classifier row vocab_ordering[v_start + i].
+            rows = slice(v_start, v_start + v_count)
+            if vocab_ordering is None:
+                dc_output[rows].copy_(dc[:v_count])
+            else:
+                dc_output.index_copy_(
+                    0, vocab_ordering[rows].to(torch.int64), dc[:v_count].to(c.dtype)
+                )
     if chunked_c:
         dc = dc_output
 

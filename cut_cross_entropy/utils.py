@@ -113,13 +113,14 @@ def recommend_c_grad_chunk_size(
     ):
         raise ValueError("target_programs must be a positive integer")
 
+    if num_tokens == 0:
+        return 0
+
     config = _cce_backward_best_config()
     block_b, block_v = config.kwargs["BLOCK_B"], config.kwargs["BLOCK_V"]
     memory_tiles = max_scratch_bytes // (4 * hidden_size * block_v)
     if memory_tiles < 1:
         raise ValueError("max_scratch_bytes must accommodate at least one vocabulary tile")
-    if num_tokens == 0:
-        return 0
     if target_programs is None:
         target_programs = 8 * torch.cuda.get_device_properties(device).multi_processor_count
     token_tiles = (num_tokens + block_b - 1) // block_b

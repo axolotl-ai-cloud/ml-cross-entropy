@@ -99,11 +99,13 @@ The CCE kernel is designed to work with bf16/fp16 inputs and provides good numer
 
 ### Experimental chunked classifier accumulation
 
-For a trainable classifier, `c_grad_chunk_size` bounds the temporary FP32
-classifier-gradient buffer to that many vocabulary rows. Each chunk accumulates
-across all tokens before being cast into the final gradient; the buffer is then
-reused. The full-vocabulary normalization and gradient filtering are preserved.
-The option is also available on the `LinearCrossEntropy` module.
+With `accum_c_fp32=True`, the backward pass normally allocates a full fp32 copy
+of the classifier gradient. `c_grad_chunk_size` bounds that temporary buffer to
+the given number of vocabulary rows: the backward kernel is launched once per
+chunk, each chunk accumulates across all tokens in the reusable fp32 buffer, and
+the result is cast into the final gradient. The full-vocabulary normalization and
+gradient filtering are unchanged, so the gradient matches the full accumulator.
+This only reduces peak memory; it does not change numerical precision.
 
 ```python
 loss = linear_cross_entropy(
@@ -114,14 +116,18 @@ loss = linear_cross_entropy(
 )
 ```
 
-The default `0` keeps the full accumulator. The experimental path requires
-Triton >= 3.2, contiguous classifier weights, `accum_c_fp32=True`, and
-`CCE_AUTOTUNE=0` (the default). Chunk sizes must be positive multiples of 128.
-Smaller chunks reduce peak memory but add launches and can reduce throughput.
-Frozen classifiers bypass classifier chunking.
+The default `0` keeps the full accumulator. Chunking requires Triton >= 3.2 and
+`accum_c_fp32=True`, and chunk sizes must be positive multiples of 128. Smaller
+chunks reduce peak memory but add launches and can reduce throughput. Frozen
+classifiers bypass chunking. The option is also available on the
+`LinearCrossEntropy` module.
 
-The optional `recommend_c_grad_chunk_size` helper chooses an integer to pass to
-the loss. It runs independently of the loss and kernel:
+`recommend_c_grad_chunk_size` picks a chunk size that keeps each backward launch
+busy (eight programs per SM by default) while capping the fp32 scratch buffer at
+1 GiB; override `target_programs` or `max_scratch_bytes` to change those
+tradeoffs. Pass the number of valid prediction tokens in one local microbatch
+and the classifier shape seen by this rank's loss (the local shard for vocabulary
+parallelism). It returns `0` when the full accumulator already fits.
 
 ```python
 from cut_cross_entropy import recommend_c_grad_chunk_size
@@ -132,59 +138,9 @@ chunk_size = recommend_c_grad_chunk_size(
     hidden_size=classifier.size(1),
     device=classifier.device,
 )
-loss = linear_cross_entropy(
-    embeddings, classifier, labels,
-    accum_e_fp32=True,
-    accum_c_fp32=True,
-    c_grad_chunk_size=chunk_size,
-)
 ```
 
-This heuristic targets eight backward programs per GPU SM and caps temporary
-FP32 classifier scratch at 1 GiB. Override `target_programs` or
-`max_scratch_bytes` to change those tradeoffs. An explicit program target avoids
-querying CUDA properties, so a recommendation can also be computed during setup.
-It estimates parallelism; it does not measure current GPU utilization or guarantee
-optimal throughput. The returned `0` selects full accumulation for small heads
-or empty batches.
-
-Use valid prediction tokens in one local microbatch, accounting for label masking
-and causal shifting when known. A batch-token estimate is also usable. DDP world
-size and gradient-accumulation steps are not multipliers. For vocabulary
-parallelism, pass the local classifier shard's row count; for FSDP, use the head
-shape seen after gathering for the forward pass.
-
-Two-rank tests cover vocabulary parallelism (including FP32 embedding-gradient
-reduction before casting), DDP, and FSDP2 with resharding, mixed precision,
-microbatch accumulation, and optimizer updates:
-
-```bash
-pytest tests/test_chunked_distributed.py
-```
-
-These tests use small models and tensors; they do not establish full-model
-training throughput or DeepSpeed ZeRO-3 compatibility.
-
-Boundary tests cover partial final chunks, token and hidden-dimension tile edges,
-and nonzero storage offsets in FP16/BF16. To detect out-of-bounds or misaligned
-CUDA accesses, run the following from the repository root with a CUDA GPU and
-Compute Sanitizer available:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. CCE_AUTOTUNE=0 \
-PYTORCH_NO_CUDA_MEMORY_CACHING=1 \
-PYTORCH_ALLOC_CONF=expandable_segments:False \
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False \
-compute-sanitizer --tool memcheck --padding 256 --error-exitcode 99 \
-  --target-processes all python -m pytest -q \
-  tests/test_chunked_accumulation.py tests/test_chunked_memory.py \
-  tests/test_chunk_recommendation.py
-```
-
-Disabling allocator caching and adding guard padding exposes allocation-boundary
-errors. Sanitizer errors or failed tests produce a nonzero exit code. Verify that
-the GPU tests run rather than skip; plain pytest checks numerical results and
-input integrity but does not replace sanitizer instrumentation.
+See `tests/README.md` for the distributed and Compute Sanitizer test recipes.
 
 ### Vocabulary Parallelism
 

@@ -104,7 +104,7 @@ def test_chunked_partial_and_accumulated_gradients(train_embedding, train_classi
         assert relative_error < 0.003
 
 
-@pytest.mark.parametrize("requirement", ["accumulation", "triton", "autotune", "contiguous"])
+@pytest.mark.parametrize("requirement", ["accumulation", "triton"])
 def test_chunking_requirements(requirement, monkeypatch):
     e = torch.randn(2, 128, dtype=torch.bfloat16)
     c = torch.randn(512, 128, dtype=torch.bfloat16).requires_grad_()
@@ -112,18 +112,27 @@ def test_chunking_requirements(requirement, monkeypatch):
     accum_c_fp32 = requirement != "accumulation"
     if requirement == "triton":
         monkeypatch.setattr("cut_cross_entropy.cce.is_triton_greater_or_equal_3_2_0", lambda: False)
-    if requirement == "autotune":
-        monkeypatch.setattr("cut_cross_entropy.cce._AUTOTUNE", True)
-    if requirement == "contiguous":
-        c = c.T.contiguous().T.detach().requires_grad_()
-    message = {
-        "accumulation": "FP32 accumulation",
-        "triton": "Triton >= 3.2",
-        "autotune": "CCE_AUTOTUNE=0",
-        "contiguous": "contiguous classifier",
-    }[requirement]
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match="FP32 accumulation and Triton >= 3.2"):
         linear_cross_entropy(e, c, y, accum_c_fp32=accum_c_fp32, c_grad_chunk_size=256)
+
+
+@skip_no_cuda
+@pytest.mark.parametrize("filter_eps", [None, "auto"])
+def test_chunked_noncontiguous_classifier(filter_eps):
+    """The scratch buffer has its own strides, so any classifier layout is supported."""
+    torch.manual_seed(42)
+    e = (torch.randn(257, 128, device="cuda", dtype=torch.bfloat16) / 4).requires_grad_()
+    c = torch.randn(128, 1025, device="cuda", dtype=torch.bfloat16).T.detach().requires_grad_()
+    assert not c.is_contiguous()
+    targets = torch.randint(0, 1025, (257,), device="cuda")
+    kwargs = dict(accum_e_fp32=True, accum_c_fp32=True, filter_eps=filter_eps)
+    expected = torch.autograd.grad(linear_cross_entropy(e, c, targets, **kwargs), (e, c))
+    actual = torch.autograd.grad(
+        linear_cross_entropy(e, c, targets, c_grad_chunk_size=256, **kwargs), (e, c)
+    )
+    for a, x in zip(actual, expected, strict=True):
+        assert a.stride() == x.stride()
+        assert (a.float() - x.float()).norm() / x.float().norm() < 0.003
 
 
 def test_torch_compile_rejects_chunking():
