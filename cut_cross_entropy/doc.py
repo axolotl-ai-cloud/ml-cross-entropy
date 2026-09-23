@@ -42,6 +42,12 @@ LINEAR_CROSS_ENTROPY_DOC = """Computes cross-entropy loss using the logits gener
 
 CCE_OPTS_DOC = [
     """
+    :param c_grad_chunk_size: Maximum vocabulary rows in the reusable fp32 classifier-gradient
+        accumulator. Zero (the default) uses a full-size accumulator. Positive values must be
+        integer multiples of 128 and require accum_c_fp32=True and Triton >= 3.2. This only
+        reduces peak memory in the backward pass; the result matches the full accumulator.
+        Ignored when the classifier does not require gradients.""",
+    """
     :param filter_eps: The threshold value used to determine which locations can be safely ignored
         in gradient computation. The default value of "auto" will automatically choose a value
         based on the input dtype.""",

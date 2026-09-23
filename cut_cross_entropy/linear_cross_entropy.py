@@ -54,6 +54,7 @@ def linear_cross_entropy(
     impl: str | LinearCrossEntropyImpl = LCE_IMPL_DEFAULT,
     vocab_parallel_options: VocabParallelOptions | None = None,
     zero3_params: list[torch.nn.Parameter] | None = None,
+    c_grad_chunk_size: int = 0,
 ) -> torch.Tensor:
     """
     :param impl: The linear cross entropy implementation to use. Currently supports cce, torch_compile, and cce_exact.
@@ -111,8 +112,11 @@ def linear_cross_entropy(
             **cce_opts,
             vocab_parallel_options=vocab_parallel_options,
             zero3_params=zero3_params,
+            c_grad_chunk_size=c_grad_chunk_size,
         )
     elif impl == "torch_compile":
+        if c_grad_chunk_size != 0:
+            raise ValueError("c_grad_chunk_size is only supported by CCE implementations")
         return torch_compile_linear_cross_entropy(
             e,
             c,
@@ -141,6 +145,7 @@ class LinearCrossEntropy(nn.Module):
         filter_e_grad: bool = True,
         filter_c_grad: bool = True,
         impl: str | LinearCrossEntropyImpl = LCE_IMPL_DEFAULT,
+        c_grad_chunk_size: int = 0,
     ):
         super().__init__()
         self.ignore_index = ignore_index
@@ -151,6 +156,7 @@ class LinearCrossEntropy(nn.Module):
 
         self.accum_e_fp32 = accum_e_fp32
         self.accum_c_fp32 = accum_c_fp32
+        self.c_grad_chunk_size = c_grad_chunk_size
 
         self.filter_e_grad = filter_e_grad
         self.filter_c_grad = filter_c_grad
@@ -179,4 +185,5 @@ class LinearCrossEntropy(nn.Module):
             filter_e_grad=self.filter_e_grad,
             filter_c_grad=self.filter_c_grad,
             impl=self.impl,
+            c_grad_chunk_size=self.c_grad_chunk_size,
         )

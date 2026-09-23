@@ -32,7 +32,7 @@ def _mm_backward(
     BLOCK_D: tl.constexpr,
     EVEN_D: tl.constexpr,
     USE_KAHAN: tl.constexpr,
-    DOT_PRECISION: tl.constexpr
+    DOT_PRECISION: tl.constexpr,
 ):
     d_inds = tl.arange(0, BLOCK_D)[None, :].to(tl.int64)
 
@@ -97,6 +97,8 @@ def _cce_backward_kernel(
     D,
     V,
     BMax,
+    VStart,
+    VCount,
     n_de_locks_0,
     n_de_locks_1,
     n_dc_locks_0,
@@ -105,6 +107,8 @@ def _cce_backward_kernel(
     stride_ed,
     stride_cv,
     stride_cd,
+    stride_dcv,
+    stride_dcd,
     stride_biasv,
     stride_vb,
     filter_eps,
@@ -132,10 +136,11 @@ def _cce_backward_kernel(
     COMPUTE_DE: tl.constexpr,
     COMPUTE_DBIAS: tl.constexpr,
     DOT_PRECISION: tl.constexpr,
+    CHUNKED_C: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_b_chunks = tl.cdiv(B, BLOCK_B)
-    num_v_chunks = tl.cdiv(V, BLOCK_V)
+    num_v_chunks = tl.cdiv(VCount, BLOCK_V)
     num_v_in_group = GROUP_B * num_v_chunks
     group_id = pid // num_v_in_group
     first_pid_b = group_id * GROUP_B
@@ -147,9 +152,13 @@ def _cce_backward_kernel(
     if HAS_VALIDS:
         offs_b = tl.load(Valids + stride_vb * offs_b, mask=offs_b < B, other=BMax).to(tl.int64)
 
-    offs_v = (pid_v * BLOCK_V + tl.arange(0, BLOCK_V)).to(tl.int64)
+    local_v = (pid_v * BLOCK_V + tl.arange(0, BLOCK_V)).to(tl.int64)
+    offs_v = local_v + VStart
     if HAS_VOCAB_ORDERING:
         offs_v = tl.load(VocabOrdering + offs_v, mask=offs_v < V, other=V).to(tl.int64)
+
+    if CHUNKED_C:
+        offs_v = tl.where(local_v < VCount, offs_v, V)
 
     offs_d = tl.arange(0, BLOCK_D).to(tl.int64)
     e_ptrs = E + (offs_b[:, None] * stride_eb + offs_d[None, :] * stride_ed)
@@ -268,18 +277,19 @@ def _cce_backward_kernel(
             should_skip_c = False
 
         if not should_skip_c:
-            lock_offset = (pid_v // tl.cdiv(V, BLOCK_V * n_dc_locks_0)) * n_dc_locks_1
+            lock_offset = (pid_v // tl.cdiv(VCount, BLOCK_V * n_dc_locks_0)) * n_dc_locks_1
+            dc_v = local_v if CHUNKED_C else offs_v
 
             _mm_backward(
                 tl.trans(d_accum),
-                dC + (offs_v[:, None] * stride_cv),
-                dCC + (offs_v[:, None] * stride_cv) if KAHAN_C else None,
+                dC + (dc_v[:, None] * stride_dcv),
+                dCC + (offs_v[:, None] * stride_dcv) if KAHAN_C else None,
                 offs_v[:, None] < V,
                 dCLocks + lock_offset,
                 n_dc_locks_1,
                 E + (offs_b[:, None] * stride_eb),
                 offs_b[:, None] < BMax,
-                stride_cd,
+                stride_dcd,
                 stride_ed,
                 D,
                 MM_BACK_BLOCK_D,
@@ -293,10 +303,14 @@ def _cce_back_block_d(args) -> int:
     block_d = args["BLOCK_D"]
     return 2 * block_d
 
+
 try:
     USE_TF32 = torch.get_float32_matmul_precision() == "high"
 except RuntimeError:
-    USE_TF32 = torch.backends.cuda.matmul.fp32_precision == "tf32" or torch.backends.fp32_precision == "tf32"
+    USE_TF32 = (
+        torch.backends.cuda.matmul.fp32_precision == "tf32"
+        or torch.backends.fp32_precision == "tf32"
+    )
 
 _cce_backward_kernel = triton.jit(_cce_backward_kernel)
 _cce_backward_kernel = triton.heuristics(  # type: ignore
@@ -317,7 +331,7 @@ _cce_backward_kernel = triton.heuristics(  # type: ignore
         "KAHAN_E": lambda args: args["dEC"] is not None,
         "KAHAN_C": lambda args: args["dCC"] is not None,
         "COMPUTE_DBIAS": lambda args: args["dBias"] is not None,
-        "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee"
+        "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee",
     }
 )(_cce_backward_kernel)
 _cce_backward_kernel = cce_backward_autotune()(_cce_backward_kernel)  # type: ignore
@@ -342,6 +356,7 @@ def cce_backward_kernel(
     filter_c_grad: bool = True,
     reduce_e_grad: bool = False,
     pg: torch.distributed.ProcessGroup | None = None,
+    c_grad_chunk_size: int = 0,
 ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
     assert do.numel() in (e.size(0), 1)
     assert c.size(1) == e.size(1)
@@ -363,8 +378,22 @@ def cce_backward_kernel(
     de_dtype = torch.float32 if (accum_e_fp32 and can_use_fp32_accum) else None
     de = torch.zeros_like(e, dtype=de_dtype) if e.requires_grad else None
 
+    assert c_grad_chunk_size >= 0 and c_grad_chunk_size % 128 == 0, (
+        "c_grad_chunk_size must be zero or a positive multiple of 128"
+    )
+    chunked_c = c_grad_chunk_size > 0 and c.requires_grad and c_grad_chunk_size < c.size(0)
+    chunk_size = c_grad_chunk_size if chunked_c else c.size(0)
     dc_dtype = torch.float32 if (accum_c_fp32 and can_use_fp32_accum) else None
-    dc = torch.zeros_like(c, dtype=dc_dtype) if c.requires_grad else None
+    if chunked_c:
+        assert dc_dtype is torch.float32, (
+            "Chunked classifier accumulation requires accum_c_fp32=True and Triton >= 3.2"
+        )
+        # Reusable fp32 scratch covering one vocabulary chunk. The final gradient
+        # is assembled chunk by chunk in the classifier's dtype and layout.
+        dc = torch.empty((chunk_size, c.size(1)), device=c.device, dtype=dc_dtype)
+        dc_output = torch.empty_like(c)
+    else:
+        dc = torch.zeros_like(c, dtype=dc_dtype) if c.requires_grad else None
 
     accum_e_fp32 = accum_e_fp32 and de is not None
     accum_c_fp32 = accum_c_fp32 and dc is not None
@@ -378,7 +407,10 @@ def cce_backward_kernel(
         assert de.stride() == e.stride()
 
     if dc is not None:
-        assert dc.stride() == c.stride()
+        if chunked_c:
+            assert dc.is_contiguous()
+        else:
+            assert dc.stride() == c.stride()
 
     if dbias is not None:
         assert bias is not None
@@ -398,7 +430,7 @@ def cce_backward_kernel(
         assert dec.stride() == e.stride()
 
     if dcc is not None:
-        assert dcc.stride() == e.stride()
+        assert dcc.stride() == c.stride()
 
     if valids is not None:
         assert valids.ndim == 1
@@ -411,8 +443,10 @@ def cce_backward_kernel(
         lse = lse.contiguous()
         assert do.stride(0) == lse.stride(0), f"{do.stride()=}, {lse.stride()=}"
 
+    dc_strides = (dc.stride(0), dc.stride(1)) if dc is not None else (c.stride(0), c.stride(1))
+
     def grid(META):
-        return (triton.cdiv(B, META["BLOCK_B"]) * triton.cdiv(c.size(0), META["BLOCK_V"]),)
+        return (triton.cdiv(B, META["BLOCK_B"]) * triton.cdiv(v_count, META["BLOCK_V"]),)
 
     if vocab_ordering is not None:
         assert vocab_ordering.ndim == 1
@@ -428,48 +462,68 @@ def cce_backward_kernel(
         de_lock_sizes = (None, None)
 
     if dc is not None:
-        dc_locks = c.new_zeros((triton.cdiv(c.size(0), 128), nd_locks), dtype=torch.int32)
+        dc_locks = c.new_zeros((triton.cdiv(chunk_size, 128), nd_locks), dtype=torch.int32)
         dc_lock_sizes = dc_locks.size()
     else:
         dc_locks = None
         dc_lock_sizes = (None, None)
 
-    _cce_backward_kernel[grid](
-        e,
-        c,
-        bias,
-        lse,
-        do,
-        grad_scale,
-        valids,
-        vocab_ordering,
-        softcap,
-        targets,
-        de,
-        dec,
-        de_locks,
-        dc,
-        dcc,
-        dc_locks,
-        dbias,
-        B,
-        e.size(1),
-        c.size(0),
-        e.size(0),
-        *de_lock_sizes,
-        *dc_lock_sizes,
-        e.stride(0),
-        e.stride(1),
-        c.stride(0),
-        c.stride(1),
-        1 if bias is None else bias.stride(0),
-        1 if valids is None else valids.stride(0),
-        filter_eps,
-        shift=shift,
-        B_BIN=b_bin_fn(B),
-        FILTER_E_GRAD=filter_e_grad and de is not None,
-        FILTER_C_GRAD=filter_c_grad and dc is not None,
-    )
+    for v_start in range(0, c.size(0), chunk_size):
+        v_count = min(chunk_size, c.size(0) - v_start)
+        if chunked_c:
+            dc.zero_()
+        _cce_backward_kernel[grid](
+            e,
+            c,
+            bias,
+            lse,
+            do,
+            grad_scale,
+            valids,
+            vocab_ordering,
+            softcap,
+            targets,
+            de,
+            dec,
+            de_locks,
+            dc,
+            dcc,
+            dc_locks,
+            dbias,
+            B,
+            e.size(1),
+            c.size(0),
+            e.size(0),
+            v_start,
+            v_count,
+            *de_lock_sizes,
+            *dc_lock_sizes,
+            e.stride(0),
+            e.stride(1),
+            c.stride(0),
+            c.stride(1),
+            *dc_strides,
+            1 if bias is None else bias.stride(0),
+            1 if valids is None else valids.stride(0),
+            filter_eps,
+            shift=shift,
+            B_BIN=b_bin_fn(B),
+            FILTER_E_GRAD=filter_e_grad and de is not None,
+            FILTER_C_GRAD=filter_c_grad and dc is not None,
+            CHUNKED_C=chunked_c,
+        )
+        if chunked_c:
+            # Cast this chunk into its final rows. With a vocab ordering, scratch row i
+            # holds the gradient for classifier row vocab_ordering[v_start + i].
+            rows = slice(v_start, v_start + v_count)
+            if vocab_ordering is None:
+                dc_output[rows].copy_(dc[:v_count])
+            else:
+                dc_output.index_copy_(
+                    0, vocab_ordering[rows].to(torch.int64), dc[:v_count].to(c.dtype)
+                )
+    if chunked_c:
+        dc = dc_output
 
     if reduce_e_grad and de is not None:
         de = vp_reduce_e_grad(de, pg)

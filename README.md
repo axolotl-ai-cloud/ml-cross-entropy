@@ -97,6 +97,51 @@ There are several other implementations available depending on your needs.
 The CCE kernel is designed to work with bf16/fp16 inputs and provides good numerical stability for most use cases. However, for models with very large vocabularies or very long sequence lengths, you may want to consider using the `cce_kahan` implementation which uses Kahan summation (or fp32 accumulation for Triton >= 3.2) to improve numerical precision. This comes at the cost of more memory usage but can be beneficial for training stability.
 
 
+### Experimental chunked classifier accumulation
+
+With `accum_c_fp32=True`, the backward pass normally allocates a full fp32 copy
+of the classifier gradient. `c_grad_chunk_size` bounds that temporary buffer to
+the given number of vocabulary rows: the backward kernel is launched once per
+chunk, each chunk accumulates across all tokens in the reusable fp32 buffer, and
+the result is cast into the final gradient. The full-vocabulary normalization and
+gradient filtering are unchanged, so the gradient matches the full accumulator.
+This only reduces peak memory; it does not change numerical precision.
+
+```python
+loss = linear_cross_entropy(
+    embeddings, classifier, labels,
+    accum_e_fp32=True,
+    accum_c_fp32=True,
+    c_grad_chunk_size=32768,
+)
+```
+
+The default `0` keeps the full accumulator. Chunking requires Triton >= 3.2 and
+`accum_c_fp32=True`, and chunk sizes must be positive multiples of 128. Smaller
+chunks reduce peak memory but add launches and can reduce throughput. Frozen
+classifiers bypass chunking. The option is also available on the
+`LinearCrossEntropy` module.
+
+`recommend_c_grad_chunk_size` picks a chunk size that keeps each backward launch
+busy (eight programs per SM by default) while capping the fp32 scratch buffer at
+1 GiB; override `target_programs` or `max_scratch_bytes` to change those
+tradeoffs. Pass the number of valid prediction tokens in one local microbatch
+and the classifier shape seen by this rank's loss (the local shard for vocabulary
+parallelism). It returns `0` when the full accumulator already fits.
+
+```python
+from cut_cross_entropy import recommend_c_grad_chunk_size
+
+chunk_size = recommend_c_grad_chunk_size(
+    num_tokens=valid_prediction_tokens,
+    vocab_size=classifier.size(0),
+    hidden_size=classifier.size(1),
+    device=classifier.device,
+)
+```
+
+See `tests/README.md` for the distributed and Compute Sanitizer test recipes.
+
 ### Vocabulary Parallelism
 
 We also support computing linear cross-entropy loss for classifier weights sharded
