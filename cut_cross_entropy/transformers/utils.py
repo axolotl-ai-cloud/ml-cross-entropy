@@ -72,6 +72,7 @@ class PatchOptions:
     filter_e_grad: bool
     filter_c_grad: bool
     train_only: bool
+    c_grad_chunk_size: int = 0
 
     def to_kwargs(self) -> CCEKwargs:
         return CCEKwargs(
@@ -165,6 +166,7 @@ def apply_lce(
         bias=bias,
         shift=shift,
         softcap=softcap,
+        c_grad_chunk_size=opts.c_grad_chunk_size,
         **cce_kwargs,
     )
 

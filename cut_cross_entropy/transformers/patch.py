@@ -153,6 +153,7 @@ def cce_patch(
     filter_e_grad: bool = True,
     filter_c_grad: bool = True,
     train_only: bool = False,
+    c_grad_chunk_size: int = 0,
 ) -> None: ...
 
 
@@ -167,6 +168,7 @@ def cce_patch(
     filter_e_grad: bool = True,
     filter_c_grad: bool = True,
     train_only: bool = False,
+    c_grad_chunk_size: int = 0,
 ) -> TransformersModelT: ...
 
 
@@ -181,12 +183,21 @@ def cce_patch(
     filter_c_grad: bool = True,
     train_only: bool = False,
     remote_model_id: str | None = None,
+    c_grad_chunk_size: int = 0,
 ) -> TransformersModelT | None:
     if isinstance(impl, LinearCrossEntropyImpl):
         impl = impl.name.lower()
 
     if impl not in (v.name.lower() for v in LinearCrossEntropyImpl):
         raise ValueError(f"Unknown {impl=}")
+
+    if not isinstance(c_grad_chunk_size, int) or c_grad_chunk_size < 0 or c_grad_chunk_size % 128:
+        raise ValueError("c_grad_chunk_size must be zero or a positive multiple of 128")
+    if c_grad_chunk_size:
+        if impl == "torch_compile":
+            raise ValueError("c_grad_chunk_size is only supported by CCE implementations")
+        if not accum_c_fp32:
+            raise ValueError("c_grad_chunk_size requires accum_c_fp32=True")
 
     if isinstance(model_type_or_model, PreTrainedModel):
         if hasattr(model_type_or_model, "config"):
@@ -209,6 +220,7 @@ def cce_patch(
         filter_e_grad=filter_e_grad,
         filter_c_grad=filter_c_grad,
         train_only=train_only,
+        c_grad_chunk_size=c_grad_chunk_size,
     )
 
     patch_fn = _get_patch_fn(model_type)

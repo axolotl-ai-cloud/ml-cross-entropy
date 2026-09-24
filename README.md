@@ -140,6 +140,15 @@ chunk_size = recommend_c_grad_chunk_size(
 )
 ```
 
+The transformers patch accepts the same option. Pick the value once at setup,
+for example with `recommend_c_grad_chunk_size`, rather than per call:
+
+```python
+from cut_cross_entropy.transformers import cce_patch
+
+cce_patch("llama", accum_e_fp32=True, accum_c_fp32=True, c_grad_chunk_size=32768)
+```
+
 See `tests/README.md` for the distributed and Compute Sanitizer test recipes.
 
 ### Vocabulary Parallelism
