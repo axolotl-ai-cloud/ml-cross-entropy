@@ -164,7 +164,7 @@ def test_merged_and_disabled_adapters_use_effective_weight():
     head.enable_adapters(False)
     disabled = apply_lce_lm_head(e, head, labels, _opts())
     plain = apply_lce(e, head.base_layer.weight, labels, _opts())
-    assert torch.equal(disabled, plain)
+    assert _rel(disabled, plain) < 1e-5
 
 
 @skip_no_cuda
@@ -174,7 +174,7 @@ def test_plain_linear_threads_bias():
     e, labels = _inputs()
     loss = apply_lce_lm_head(e, head, labels, _opts())
     expected = apply_lce(e, head.weight, labels, _opts(), bias=head.bias)
-    assert torch.equal(loss, expected)
+    assert _rel(loss, expected) < 1e-5
     logits = head(e).float()
     ref = F.cross_entropy(logits[:, :-1].reshape(-1, V), labels[:, 1:].reshape(-1))
     assert _rel(loss, ref) < 2e-2

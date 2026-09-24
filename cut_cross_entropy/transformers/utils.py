@@ -192,11 +192,17 @@ def _base_weight(base_layer: nn.Module) -> torch.Tensor:
 
 
 def _zero3_gather(params: list[torch.Tensor]):
-    ds_params = [p for p in params if hasattr(p, "ds_id")]
+    if not any(hasattr(p, "ds_id") for p in params):
+        return nullcontext()
+    from deepspeed.runtime.zero.partition_parameters import GatheredParameters, ZeroParamStatus
+
+    # A parameter DeepSpeed already holds (tied to the embedding, persistent, or prefetched)
+    # is still claimed by its submodule; re-gathering it would fail on release.
+    ds_params = [
+        p for p in params if hasattr(p, "ds_id") and p.ds_status == ZeroParamStatus.NOT_AVAILABLE
+    ]
     if not ds_params:
         return nullcontext()
-    from deepspeed.runtime.zero.partition_parameters import GatheredParameters
-
     return GatheredParameters(ds_params, modifier_rank=None)
 
 
@@ -235,10 +241,6 @@ def _lora_lm_head_inputs(
     gather_params: list[torch.Tensor] = [weight]
     if base_layer.bias is not None:
         gather_params.append(base_layer.bias)
-    for name in adapters:
-        gather_params.append(lm_head.lora_B[name].weight)
-        if variants.get(name) is not None:
-            gather_params.append(lm_head.lora_magnitude_vector[name].weight)
 
     with _zero3_gather(gather_params):
         kdtype = weight.dtype
@@ -259,13 +261,24 @@ def _lora_lm_head_inputs(
                 x = e
             variant = variants.get(name)
 
+            # Read B through its forward rather than `.weight`: under FSDP2 (axolotl shards
+            # lora_A/lora_B/magnitude as their own units) and ZeRO-3 the module call is what
+            # unshards the parameter and registers its gradient hooks.
+            eye = torch.eye(lora_A.out_features, device=x.device, dtype=x.dtype)
+            b_t = lora_B(eye)
+            lora_bias = None
+            if lora_B.bias is not None:
+                lora_bias = lora_B(eye.new_zeros(1, eye.size(0)))[0]
+                b_t = b_t - lora_bias
+            b_weight = b_t.t()
+
             if variant is None and getattr(lm_head, "use_dora", {}).get(name):
                 raise NotImplementedError("CCE needs peft>=0.16 for DoRA on lm_head.")
             if variant is None:
                 e_blocks.append((lora_A(dropout(x)) * scaling).to(kdtype))
-                c_blocks.append(lora_B.weight.to(kdtype))
-                if lora_B.bias is not None:
-                    lora_bias = lora_B.bias * scaling
+                c_blocks.append(b_weight.to(kdtype))
+                if lora_bias is not None:
+                    lora_bias = lora_bias * scaling
                     bias = lora_bias if bias is None else bias + lora_bias
                 continue
 
@@ -273,18 +286,29 @@ def _lora_lm_head_inputs(
                 raise NotImplementedError(
                     f"CCE does not support LoRA variant {type(variant).__name__} on lm_head."
                 )
+            if lora_bias is not None:
+                raise NotImplementedError("CCE does not support DoRA with lora_bias on lm_head.")
             # Mirror peft's DoraLinearVariant.forward: the weight norm is a constant, and the
             # running output (base plus every adapter applied so far) is row-scaled by
-            # magnitude / norm before this adapter's LoRA term is added.
+            # magnitude / norm before this adapter's LoRA term is added. The scale comes out
+            # of the magnitude module's own forward (zero input, unit base_result gives
+            # `magnitude / norm - 1`) for the same sharding reason as B above.
             dora = lm_head.lora_magnitude_vector[name]
-            lora_weight = dora.get_lora_weight(lora_A=lora_A, lora_B=lora_B, adapter_name=name)
-            weight_norm = dora.get_weight_norm(
-                weight=weight.to(x.dtype),
-                lora_weight=lora_weight.detach().to(x.dtype),
-                scaling=scaling,
-                adapter_name=name,
-            ).detach()
-            mag_norm_scale = (dora.weight / weight_norm)[:, None]
+            unit = torch.ones(1, weight.size(0), device=x.device, dtype=x.dtype)
+            if base_layer.bias is not None:
+                unit = unit + base_layer.bias.to(x.dtype)
+            mag_norm_scale = (
+                dora(
+                    x.new_zeros(1, x.size(-1)),
+                    lora_A=lora_A,
+                    lora_B=lora_B,
+                    scaling=scaling,
+                    base_layer=base_layer,
+                    base_result=unit,
+                    adapter_name=name,
+                )[0]
+                + 1
+            )[:, None]
             if isinstance(dropout, nn.Identity) or not lm_head.training:
                 c_blocks = [(mag_norm_scale * block).to(kdtype) for block in c_blocks]
                 xd = x
@@ -294,7 +318,7 @@ def _lora_lm_head_inputs(
                 e_blocks.append(xd.to(kdtype))
                 c_blocks.append(((mag_norm_scale - 1) * weight).to(kdtype))
             e_blocks.append((lora_A(xd) * scaling).to(kdtype))
-            c_blocks.append((mag_norm_scale * lora_B.weight).to(kdtype))
+            c_blocks.append((mag_norm_scale * b_weight).to(kdtype))
 
         e_aug = torch.cat(e_blocks, dim=-1)
         c_aug = torch.cat(c_blocks, dim=-1)
