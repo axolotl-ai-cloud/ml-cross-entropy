@@ -30,7 +30,7 @@ from transformers.models.gemma3n.modeling_gemma3n import (
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
-    apply_lce,
+    apply_lce_lm_head,
     patch_remote_model_class,
 )
 
@@ -74,9 +74,9 @@ def cce_forward(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        loss = apply_lce(
+        loss = apply_lce_lm_head(
             hidden_states[:, slice_indices, :],
-            self.lm_head.weight,
+            self.lm_head,
             labels,
             _PATCH_OPTS,
             softcap=getattr(self.config, "final_logit_softcapping", None),
@@ -147,14 +147,14 @@ def cce_forward_multimodal(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        loss = apply_lce(
+        loss = apply_lce_lm_head(
             # downcast hidden_states to match lm_head.weight dtype which should be bf16
             (
                 hidden_states[:, slice_indices, :].to(self.lm_head.weight.dtype)
                 if hidden_states.dtype != self.lm_head.weight.dtype
                 else hidden_states[:, slice_indices, :]
             ),
-            self.lm_head.weight,
+            self.lm_head,
             labels,
             _PATCH_OPTS,
             softcap=getattr(self.config.get_text_config(), "final_logit_softcapping", None),

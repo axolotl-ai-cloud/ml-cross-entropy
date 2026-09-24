@@ -15,7 +15,7 @@ except ImportError:
         DTensor = None
         Shard = None
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 import torch.nn as nn
 
@@ -174,6 +174,167 @@ def apply_lce(
         loss = loss / num_items_in_batch
 
     return loss
+
+
+def _is_lora_linear(module: nn.Module) -> bool:
+    return all(
+        hasattr(module, a) for a in ("lora_A", "lora_B", "scaling", "base_layer", "active_adapters")
+    )
+
+
+def _base_weight(base_layer: nn.Module) -> torch.Tensor:
+    weight = base_layer.weight
+    if type(weight).__name__ in ("Params4bit", "Int8Params") or hasattr(base_layer, "W_q"):
+        from peft.utils.integrations import dequantize_module_weight
+
+        weight = dequantize_module_weight(base_layer)
+    return weight
+
+
+def _zero3_gather(params: list[torch.Tensor]):
+    ds_params = [p for p in params if hasattr(p, "ds_id")]
+    if not ds_params:
+        return nullcontext()
+    from deepspeed.runtime.zero.partition_parameters import GatheredParameters
+
+    return GatheredParameters(ds_params, modifier_rank=None)
+
+
+def _lora_lm_head_inputs(
+    e: torch.Tensor, lm_head: nn.Module
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None] | None:
+    """Fold the active LoRA adapters of ``lm_head`` into an augmented (e, c, bias) triple.
+
+    ``logits = e @ W^T + sum_i scaling_i * dropout_i(e) @ A_i^T @ B_i^T`` is exactly
+    ``[e, z_1, ..., z_k] @ [W, B_1, ..., B_k]^T`` with ``z_i = scaling_i * A_i(dropout_i(e))``,
+    so the unmaterialised-logit kernel sees one wider classifier. Gradients reach ``A_i``
+    through ``z_i`` and ``B_i`` through the concatenated classifier. Returns ``None`` when
+    the module is not a LoRA layer or its adapters are merged/disabled, in which case
+    ``lm_head.weight`` already is the effective classifier.
+    """
+    if not _is_lora_linear(lm_head):
+        return None
+    if lm_head.disable_adapters:
+        if lm_head.merged:
+            lm_head.unmerge()
+        return None
+    if lm_head.merged:
+        return None
+    adapters = [a for a in lm_head.active_adapters if a in lm_head.lora_A]
+    if not adapters:
+        return None
+
+    base_layer = lm_head.get_base_layer()
+    weight = _base_weight(base_layer)
+    if DTensor is not None and isinstance(weight, DTensor):
+        raise NotImplementedError(
+            "CCE does not support a vocab-parallel (DTensor) lm_head with LoRA adapters."
+        )
+
+    variants = getattr(lm_head, "lora_variant", {})
+    gather_params: list[torch.Tensor] = [weight]
+    if base_layer.bias is not None:
+        gather_params.append(base_layer.bias)
+    for name in adapters:
+        gather_params.append(lm_head.lora_B[name].weight)
+        if variants.get(name) is not None:
+            gather_params.append(lm_head.lora_magnitude_vector[name].weight)
+
+    with _zero3_gather(gather_params):
+        kdtype = weight.dtype
+        if e.dtype == torch.float32 and kdtype in (torch.bfloat16, torch.float16):
+            e = e.to(kdtype)
+        bias = base_layer.bias
+        e_blocks: list[torch.Tensor] = [e]
+        c_blocks: list[torch.Tensor] = [weight]
+
+        for name in adapters:
+            lora_A = lm_head.lora_A[name]
+            lora_B = lm_head.lora_B[name]
+            dropout = lm_head.lora_dropout[name]
+            scaling = lm_head.scaling[name]
+            if getattr(lm_head, "cast_input_dtype_enabled", True):
+                x = e.to(lora_A.weight.dtype)
+            else:
+                x = e
+            variant = variants.get(name)
+
+            if variant is None and getattr(lm_head, "use_dora", {}).get(name):
+                raise NotImplementedError("CCE needs peft>=0.16 for DoRA on lm_head.")
+            if variant is None:
+                e_blocks.append((lora_A(dropout(x)) * scaling).to(kdtype))
+                c_blocks.append(lora_B.weight.to(kdtype))
+                if lora_B.bias is not None:
+                    lora_bias = lora_B.bias * scaling
+                    bias = lora_bias if bias is None else bias + lora_bias
+                continue
+
+            if "Dora" not in type(variant).__name__:
+                raise NotImplementedError(
+                    f"CCE does not support LoRA variant {type(variant).__name__} on lm_head."
+                )
+            # Mirror peft's DoraLinearVariant.forward: the weight norm is a constant, and the
+            # running output (base plus every adapter applied so far) is row-scaled by
+            # magnitude / norm before this adapter's LoRA term is added.
+            dora = lm_head.lora_magnitude_vector[name]
+            lora_weight = dora.get_lora_weight(lora_A=lora_A, lora_B=lora_B, adapter_name=name)
+            weight_norm = dora.get_weight_norm(
+                weight=weight.to(x.dtype),
+                lora_weight=lora_weight.detach().to(x.dtype),
+                scaling=scaling,
+                adapter_name=name,
+            ).detach()
+            mag_norm_scale = (dora.weight / weight_norm)[:, None]
+            if isinstance(dropout, nn.Identity) or not lm_head.training:
+                c_blocks = [(mag_norm_scale * block).to(kdtype) for block in c_blocks]
+                xd = x
+            else:
+                # peft recomputes only the base projection, on the dropped-out input.
+                xd = dropout(x)
+                e_blocks.append(xd.to(kdtype))
+                c_blocks.append(((mag_norm_scale - 1) * weight).to(kdtype))
+            e_blocks.append((lora_A(xd) * scaling).to(kdtype))
+            c_blocks.append((mag_norm_scale * lora_B.weight).to(kdtype))
+
+        e_aug = torch.cat(e_blocks, dim=-1)
+        c_aug = torch.cat(c_blocks, dim=-1)
+
+    return e_aug, c_aug, bias
+
+
+def apply_lce_lm_head(
+    e: torch.Tensor,
+    lm_head: nn.Module,
+    labels: torch.Tensor,
+    opts: PatchOptions,
+    softcap: float | None = None,
+    shift_labels: torch.Tensor | None = None,
+    **loss_kwargs,
+) -> torch.Tensor:
+    """``apply_lce`` over an ``lm_head`` module rather than its weight.
+
+    PEFT's ``LoraLayer.weight`` resolves to the frozen base weight, so passing
+    ``lm_head.weight`` silently drops any LoRA adapter on the head. This folds the
+    adapters into the classifier (see ``_lora_lm_head_inputs``) and otherwise behaves
+    like ``apply_lce(e, lm_head.weight, ..., bias=lm_head.bias)``.
+    """
+    lora_inputs = _lora_lm_head_inputs(e, lm_head)
+    if lora_inputs is None:
+        c = lm_head.weight
+        bias = getattr(lm_head, "bias", None)
+    else:
+        e, c, bias = lora_inputs
+
+    return apply_lce(
+        e,
+        c,
+        labels,
+        opts,
+        bias=bias,
+        softcap=softcap,
+        shift_labels=shift_labels,
+        **loss_kwargs,
+    )
 
 
 def patch_remote_model_class(
