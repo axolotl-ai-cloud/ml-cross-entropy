@@ -267,10 +267,15 @@ We currently support the Llama, Phi3, Mistral, and Gemma2 families of models.
 #### PEFT adapters on `lm_head`
 
 The patched forwards pass the `lm_head` module (not `lm_head.weight`) to `apply_lce_lm_head`, so a
-PEFT LoRA or DoRA adapter on the head is part of the loss. The adapter is folded into the
-classifier as `[e | s·A(e)] @ [W | B]ᵀ`, which keeps logits unmaterialised while giving `A` and
-`B` exact gradients. The extra cost is a `(V, D + r)` copy of the classifier per step and its
-full gradient in the backward. Merged or disabled adapters fall back to the plain weight.
+PEFT LoRA or DoRA adapter on the head is part of the loss. The adapter enters the kernels as a
+second operand pair, `e @ Wᵀ + (s·A(e)) @ Bᵀ`, which keeps logits unmaterialised while giving `A`
+and `B` exact gradients. `W` is passed as-is (no copy, and no classifier gradient while it is
+frozen); the only classifier gradient computed is the `(V, r)` one for `B`. Merged or disabled
+adapters fall back to the plain weight.
+
+The same mechanism is available directly: `linear_cross_entropy(e, c, targets, e2=z, c2=B)`
+computes the loss of `e @ cᵀ + z @ Bᵀ (+ bias)` for both the `cce` and `torch_compile`
+implementations, with gradients for whichever of `e`, `c`, `e2`, `c2` require them.
 
 `apply_lce_lm_head` also takes explicit per-row or per-token routing for multi-adapter batches:
 

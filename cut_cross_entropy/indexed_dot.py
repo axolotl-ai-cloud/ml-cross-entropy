@@ -107,6 +107,8 @@ def indexed_neg_dot_forward_kernel(
     valids: torch.Tensor | None = None,
     softcap: float | None = None,
     out_dtype: torch.dtype | None = None,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> torch.Tensor:
     assert inds.ndim == 1
     assert e.ndim == 2
@@ -120,6 +122,35 @@ def indexed_neg_dot_forward_kernel(
     else:
         B = e.size(0)
 
+    out = _indexed_neg_dot(e, c, inds, bias, shift, valids, B)
+    if e2 is not None:
+        assert c2 is not None
+        assert e2.ndim == 2 and c2.ndim == 2
+        assert e2.size(0) == e.size(0) and c2.size(0) == c.size(0)
+        assert c2.size(1) == e2.size(1)
+        # A separate output: the autotuner may zero a kernel's output before it runs.
+        out = out + _indexed_neg_dot(e2, c2, inds, None, shift, valids, B)
+
+    if softcap is not None:
+        out = softcapping(out, softcap)
+
+    if out_dtype is None:
+        out_dtype = e.dtype
+
+    out = out.to(out_dtype)
+
+    return out
+
+
+def _indexed_neg_dot(
+    e: torch.Tensor,
+    c: torch.Tensor,
+    inds: torch.Tensor,
+    bias: torch.Tensor | None,
+    shift: int,
+    valids: torch.Tensor | None,
+    B: int,
+) -> torch.Tensor:
     out = e.new_zeros((B,), dtype=torch.float32)
 
     def grid(META) -> tuple[int]:
@@ -146,13 +177,4 @@ def indexed_neg_dot_forward_kernel(
         shift=shift,
         B_BIN=b_bin_fn(B),
     )
-
-    if softcap is not None:
-        out = softcapping(out, softcap)
-
-    if out_dtype is None:
-        out_dtype = e.dtype
-
-    out = out.to(out_dtype)
-
     return out

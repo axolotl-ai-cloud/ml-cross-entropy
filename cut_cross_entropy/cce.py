@@ -54,8 +54,15 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
         c: torch.Tensor,
         bias: torch.Tensor | None,
         params: CCEParams,
+        e2: torch.Tensor | None = None,
+        c2: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        needs_grad = e.requires_grad or c.requires_grad
+        needs_grad = (
+            e.requires_grad
+            or c.requires_grad
+            or (e2 is not None and e2.requires_grad)
+            or (c2 is not None and c2.requires_grad)
+        )
         return_logit_avg = needs_grad and params.filter_eps is not None
 
         ret = cce_lse_forward_kernel(
@@ -65,6 +72,8 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
             valids=params.valids,
             softcap=params.softcap,
             return_logit_avg=return_logit_avg,
+            e2=e2,
+            c2=c2,
         )
         if return_logit_avg:
             assert isinstance(ret, tuple)
@@ -108,6 +117,8 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
             valids=neg_dot_valids,
             softcap=params.softcap,
             out_dtype=lse.dtype,
+            e2=e2,
+            c2=c2,
         )
 
         if params.vocab_parallel_options is not None:
@@ -131,7 +142,7 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
         else:
             raise ValueError(f"Unknown reduction {reduction}")
 
-        ctx.save_for_backward(e, c, bias, lse, params.targets, params.valids, logit_avg)
+        ctx.save_for_backward(e, c, bias, lse, params.targets, params.valids, logit_avg, e2, c2)
         ctx.params = params
 
         return loss
@@ -139,8 +150,15 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
     @staticmethod
     def backward(
         ctx, grad_out: torch.Tensor
-    ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None, None]:
-        e, c, bias, lse, targets, valids, logit_avg = ctx.saved_tensors
+    ) -> tuple[
+        torch.Tensor | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+        None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+    ]:
+        e, c, bias, lse, targets, valids, logit_avg, e2, c2 = ctx.saved_tensors
 
         if logit_avg is not None:
             vocab_ordering = sort_logit_avg(logit_avg)
@@ -196,7 +214,7 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
                 if len(params.zero3_params) > 1:
                     bias = params.zero3_params[1].data
 
-            de, dc, dbias = cce_backward_kernel(
+            de, dc, dbias, de2, dc2 = cce_backward_kernel(
                 do=grad_out,
                 e=e,
                 c=c,
@@ -216,9 +234,11 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
                 reduce_e_grad=reduce_e_grad,
                 pg=pg,
                 c_grad_chunk_size=params.c_grad_chunk_size,
+                e2=e2,
+                c2=c2,
             )
 
-        return de, dc, dbias, None
+        return de, dc, dbias, None, de2, dc2
 
 
 def linear_cross_entropy_apply(
@@ -226,8 +246,10 @@ def linear_cross_entropy_apply(
     c: torch.Tensor,
     bias: torch.Tensor | None,
     params: CCEParams,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    loss = LinearCrossEntropyFunction.apply(e, c, bias, params)
+    loss = LinearCrossEntropyFunction.apply(e, c, bias, params, e2, c2)
     assert isinstance(loss, torch.Tensor)
 
     if params.shift != 0 and params.reduction == "none":
@@ -255,6 +277,8 @@ def cce_linear_cross_entropy(
     vocab_parallel_options: VocabParallelOptions | None = None,
     zero3_params: list[torch.nn.Parameter] | None = None,
     c_grad_chunk_size: int = 0,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> torch.Tensor:
     if not isinstance(c_grad_chunk_size, int) or c_grad_chunk_size < 0 or c_grad_chunk_size % 128:
         raise ValueError("c_grad_chunk_size must be zero or a positive integer multiple of 128")
@@ -282,6 +306,13 @@ def cce_linear_cross_entropy(
     e = e.flatten(0, -2)
     targets = targets.flatten()
 
+    if e2 is not None:
+        assert c2 is not None
+        assert e2.size()[0:-1] == batch_shape
+        assert e2.size(-1) == c2.size(1)
+        assert c2.size(0) == c.size(0)
+        e2 = e2.contiguous().flatten(0, -2)
+
     if (targets.data_ptr() % 16) != 0:
         targets = torch.nn.functional.pad(targets, (0, 1))[:-1]
 
@@ -303,4 +334,4 @@ def cce_linear_cross_entropy(
         c_grad_chunk_size=c_grad_chunk_size,
     )
 
-    return linear_cross_entropy_apply(e, c, bias, cce_params)
+    return linear_cross_entropy_apply(e, c, bias, cce_params, e2, c2)
