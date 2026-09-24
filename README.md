@@ -272,6 +272,26 @@ classifier as `[e | s·A(e)] @ [W | B]ᵀ`, which keeps logits unmaterialised wh
 `B` exact gradients. The extra cost is a `(V, D + r)` copy of the classifier per step and its
 full gradient in the backward. Merged or disabled adapters fall back to the plain weight.
 
+`apply_lce_lm_head` also takes explicit per-row or per-token routing for multi-adapter batches:
+
+```python
+loss = apply_lce_lm_head(
+    hidden, lm_head, labels, opts,
+    adapter_ids=ids,                                   # (B,) per row or (B, S) per source position
+    adapter_map={0: "adapter_a", 1: None, 2: "adapter_b"},  # None = frozen base head only
+)
+```
+
+Routing follows the source position: with causal shifting, position `t` predicts `t + 1` under the
+adapter of `t`, and an explicit `shift_labels` keeps its no-double-shift semantics. Each adapter's
+`z_i` is zeroed outside its positions, so the classifier stays `[W | B_1 | … | B_k]`, the original
+token order is preserved for `reduction="none"`, and `mean`/`sum` match dense cross-entropy over the
+supervised tokens. The module's `active_adapters` are neither read nor modified; every adapter in the
+map runs its real `lora_A`/`lora_B` forwards on every rank, in sorted-name order, even when no
+position on that rank selects it, so separately sharded adapters (FSDP2, ZeRO-3) stay in step.
+`adapter_map` must be identical on all ranks. Unknown ids, mismatched shapes, merged adapters and
+routed DoRA are rejected; `lora_bias` is supported per position.
+
 `cce_patch` takes two options. The first is the linear-cross-entropy implementation to use. Currently `"cce"` or `"torch_compile"`.
 
 The second

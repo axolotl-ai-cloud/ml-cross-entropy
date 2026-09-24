@@ -206,29 +206,97 @@ def _zero3_gather(params: list[torch.Tensor]):
     return GatheredParameters(ds_params, modifier_rank=None)
 
 
+AdapterRouting = list[tuple[str, torch.Tensor]]
+
+
+def _resolve_adapter_routing(
+    e: torch.Tensor,
+    lm_head: nn.Module,
+    adapter_ids: torch.Tensor,
+    adapter_map: dict[int, str | None],
+) -> AdapterRouting:
+    """Turn per-row or per-token adapter ids into one ``(name, mask)`` per routed adapter.
+
+    The mask has shape ``(*e.shape[:-1], 1)`` and marks the source positions that adapter
+    serves. Adapters come back in sorted-name order and every adapter named in the map is
+    present even when no position on this rank selects it, so all ranks run the same module
+    forwards in the same order.
+    """
+    if not _is_lora_linear(lm_head):
+        raise ValueError("adapter routing needs a PEFT LoRA layer as lm_head.")
+    if lm_head.merged:
+        raise ValueError("adapter routing needs unmerged adapters on lm_head.")
+    if not isinstance(adapter_ids, torch.Tensor) or not (
+        adapter_ids.dtype in (torch.int8, torch.int16, torch.int32, torch.int64)
+    ):
+        raise ValueError("adapter_ids must be an integer tensor.")
+    if adapter_ids.ndim == 1 and adapter_ids.size(0) == e.size(0):
+        ids = adapter_ids.to(e.device).view(-1, *([1] * (e.ndim - 2))).expand(e.shape[:-1])
+    elif adapter_ids.ndim == e.ndim - 1 and tuple(adapter_ids.shape) == tuple(e.shape[:-1]):
+        ids = adapter_ids.to(e.device)
+    else:
+        raise ValueError(
+            f"adapter_ids must have shape {tuple(e.shape[:1])} (per row) or "
+            f"{tuple(e.shape[:-1])} (per token), got {tuple(adapter_ids.shape)}."
+        )
+
+    names: set[str] = set()
+    for key, name in adapter_map.items():
+        if not isinstance(key, int) or isinstance(key, bool):
+            raise ValueError(f"adapter_map keys must be ints, got {key!r}.")
+        if name is None:
+            continue
+        if name not in lm_head.lora_A:
+            raise ValueError(f"adapter_map names unknown adapter {name!r} on lm_head.")
+        names.add(name)
+
+    known = torch.tensor(sorted(adapter_map), device=ids.device, dtype=ids.dtype)
+    unknown = ~torch.isin(ids, known)
+    if bool(unknown.any()):
+        bad = torch.unique(ids[unknown]).tolist()
+        raise ValueError(f"adapter_ids contains ids not in adapter_map: {bad}.")
+
+    routing: AdapterRouting = []
+    for name in sorted(names):
+        mask = torch.zeros(ids.shape, device=ids.device, dtype=torch.bool)
+        for key, mapped in adapter_map.items():
+            if mapped == name:
+                mask |= ids == key
+        routing.append((name, mask.unsqueeze(-1)))
+    return routing
+
+
 def _lora_lm_head_inputs(
-    e: torch.Tensor, lm_head: nn.Module
+    e: torch.Tensor, lm_head: nn.Module, routing: AdapterRouting | None = None
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None] | None:
-    """Fold the active LoRA adapters of ``lm_head`` into an augmented (e, c, bias) triple.
+    """Fold the LoRA adapters of ``lm_head`` into an augmented (e, c, bias) triple.
 
     ``logits = e @ W^T + sum_i scaling_i * dropout_i(e) @ A_i^T @ B_i^T`` is exactly
     ``[e, z_1, ..., z_k] @ [W, B_1, ..., B_k]^T`` with ``z_i = scaling_i * A_i(dropout_i(e))``,
     so the unmaterialised-logit kernel sees one wider classifier. Gradients reach ``A_i``
-    through ``z_i`` and ``B_i`` through the concatenated classifier. Returns ``None`` when
-    the module is not a LoRA layer or its adapters are merged/disabled, in which case
-    ``lm_head.weight`` already is the effective classifier.
+    through ``z_i`` and ``B_i`` through the concatenated classifier.
+
+    Without ``routing`` the module's active adapters apply to every position, and ``None``
+    is returned when the module is not a LoRA layer or its adapters are merged/disabled,
+    in which case ``lm_head.weight`` already is the effective classifier. With ``routing``
+    (see ``_resolve_adapter_routing``) each ``z_i`` is zeroed outside the positions routed
+    to adapter ``i``, which selects adapters per source position without touching the
+    module's active-adapter state; positions routed to no adapter get the base head only.
     """
-    if not _is_lora_linear(lm_head):
-        return None
-    if lm_head.disable_adapters:
+    if routing is None:
+        if not _is_lora_linear(lm_head):
+            return None
+        if lm_head.disable_adapters:
+            if lm_head.merged:
+                lm_head.unmerge()
+            return None
         if lm_head.merged:
-            lm_head.unmerge()
-        return None
-    if lm_head.merged:
-        return None
-    adapters = [a for a in lm_head.active_adapters if a in lm_head.lora_A]
-    if not adapters:
-        return None
+            return None
+        adapters = [(a, None) for a in lm_head.active_adapters if a in lm_head.lora_A]
+        if not adapters:
+            return None
+    else:
+        adapters = list(routing)
 
     base_layer = lm_head.get_base_layer()
     weight = _base_weight(base_layer)
@@ -250,11 +318,13 @@ def _lora_lm_head_inputs(
         e_blocks: list[torch.Tensor] = [e]
         c_blocks: list[torch.Tensor] = [weight]
 
-        for name in adapters:
+        for name, mask in adapters:
             lora_A = lm_head.lora_A[name]
             lora_B = lm_head.lora_B[name]
             dropout = lm_head.lora_dropout[name]
             scaling = lm_head.scaling[name]
+            if mask is not None and getattr(lm_head, "use_dora", {}).get(name):
+                raise NotImplementedError("CCE does not support routed DoRA on lm_head.")
             if getattr(lm_head, "cast_input_dtype_enabled", True):
                 x = e.to(lora_A.weight.dtype)
             else:
@@ -275,11 +345,20 @@ def _lora_lm_head_inputs(
             if variant is None and getattr(lm_head, "use_dora", {}).get(name):
                 raise NotImplementedError("CCE needs peft>=0.16 for DoRA on lm_head.")
             if variant is None:
-                e_blocks.append((lora_A(dropout(x)) * scaling).to(kdtype))
+                z = lora_A(dropout(x)) * scaling
+                if mask is not None:
+                    z = z * mask
+                e_blocks.append(z.to(kdtype))
                 c_blocks.append(b_weight.to(kdtype))
                 if lora_bias is not None:
                     lora_bias = lora_bias * scaling
-                    bias = lora_bias if bias is None else bias + lora_bias
+                    if mask is None:
+                        bias = lora_bias if bias is None else bias + lora_bias
+                    else:
+                        # A per-position bias is one more classifier column paired with
+                        # an indicator column in e.
+                        e_blocks.append(mask.to(kdtype))
+                        c_blocks.append(lora_bias[:, None].to(kdtype))
                 continue
 
             if "Dora" not in type(variant).__name__:
@@ -288,6 +367,8 @@ def _lora_lm_head_inputs(
                 )
             if lora_bias is not None:
                 raise NotImplementedError("CCE does not support DoRA with lora_bias on lm_head.")
+            if mask is not None:
+                raise NotImplementedError("CCE does not support routed DoRA on lm_head.")
             # Mirror peft's DoraLinearVariant.forward: the weight norm is a constant, and the
             # running output (base plus every adapter applied so far) is row-scaled by
             # magnitude / norm before this adapter's LoRA term is added. The scale comes out
@@ -333,6 +414,8 @@ def apply_lce_lm_head(
     opts: PatchOptions,
     softcap: float | None = None,
     shift_labels: torch.Tensor | None = None,
+    adapter_ids: torch.Tensor | None = None,
+    adapter_map: dict[int, str | None] | None = None,
     **loss_kwargs,
 ) -> torch.Tensor:
     """``apply_lce`` over an ``lm_head`` module rather than its weight.
@@ -341,8 +424,23 @@ def apply_lce_lm_head(
     ``lm_head.weight`` silently drops any LoRA adapter on the head. This folds the
     adapters into the classifier (see ``_lora_lm_head_inputs``) and otherwise behaves
     like ``apply_lce(e, lm_head.weight, ..., bias=lm_head.bias)``.
+
+    ``adapter_ids`` (``(B,)`` per row or ``(B, S)`` per source position) with
+    ``adapter_map`` (``{id: adapter_name | None}``) selects the adapter for each position
+    explicitly; ``None`` selects the base head only. Routing follows the source position:
+    with causal shifting, position ``t`` predicts ``t + 1`` under the adapter of ``t``.
+    Every adapter in the map takes part on every rank, so ``adapter_map`` must be the same
+    on all ranks. Routing ignores the module's active-adapter state, but a routed adapter
+    only receives gradients if its parameters require grad (PEFT's ``set_adapter`` freezes
+    the inactive ones). Without both arguments the module's active adapters apply everywhere.
     """
-    lora_inputs = _lora_lm_head_inputs(e, lm_head)
+    if (adapter_ids is None) != (adapter_map is None):
+        raise ValueError("adapter_ids and adapter_map must be given together.")
+    routing = None
+    if adapter_ids is not None:
+        assert adapter_map is not None
+        routing = _resolve_adapter_routing(e, lm_head, adapter_ids, adapter_map)
+    lora_inputs = _lora_lm_head_inputs(e, lm_head, routing)
     if lora_inputs is None:
         c = lm_head.weight
         bias = getattr(lm_head, "bias", None)
