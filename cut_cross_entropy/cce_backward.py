@@ -19,55 +19,108 @@ from cut_cross_entropy.vocab_parallel.utils import vp_reduce_e_grad
 @triton.jit
 def _mm_backward(
     do,
-    da_ptrs,
-    dac_ptrs,
+    dA,
+    dAC,
+    a_rows,
+    stride_ab,
+    stride_ad,
     partial_mask_a,
     da_lock_ptr,
     n_locks,
-    b_ptrs,
-    partial_mask_b,
-    stride_ad,
+    Bp,
+    b_rows,
+    stride_bb,
     stride_bd,
+    partial_mask_b,
     D,
+    dA2,
+    dA2C,
+    a2_rows,
+    stride_a2b,
+    stride_a2d,
+    B2p,
+    b2_rows,
+    stride_b2b,
+    stride_b2d,
+    D2,
     BLOCK_D: tl.constexpr,
     EVEN_D: tl.constexpr,
     USE_KAHAN: tl.constexpr,
+    HAS_MAIN: tl.constexpr,
+    HAS_SECOND: tl.constexpr,
     DOT_PRECISION: tl.constexpr,
 ):
-    d_inds = tl.arange(0, BLOCK_D)[None, :].to(tl.int64)
+    """dA += do @ B over BLOCK_D column tiles, then the same for the second operand pair.
 
-    b_ptrs = b_ptrs + d_inds * stride_bd
-    da_ptrs = da_ptrs + d_inds * stride_ad
-    if USE_KAHAN:
-        dac_ptrs = dac_ptrs + d_inds * stride_ad
+    The second pair (D2 padded to whole tiles) rides on the tail of the same loop instead
+    of a separate helper instance: three or more inlined copies of this loop trip an MLIR
+    dominance error in Triton's layout-conversion pass.
+    """
+    d_inds = tl.arange(0, BLOCK_D).to(tl.int64)
 
-    for d in range(0, tl.cdiv(D, BLOCK_D)):
-        if EVEN_D:
-            mask = partial_mask_b
+    if HAS_MAIN:
+        n_main = tl.cdiv(D, BLOCK_D)
+    else:
+        n_main = 0
+    if HAS_SECOND:
+        n_total = n_main + D2 // BLOCK_D
+    else:
+        n_total = n_main
+
+    for d in range(0, n_total):
+        if HAS_MAIN and HAS_SECOND:
+            is_main = d < n_main
+            d_local = tl.where(is_main, d, d - n_main)
+            cols = d_local * BLOCK_D + d_inds
+            b_ptrs = (
+                tl.where(is_main, Bp, B2p)
+                + tl.where(is_main, b_rows, b2_rows)[:, None]
+                * tl.where(is_main, stride_bb, stride_b2b)
+                + cols[None, :] * tl.where(is_main, stride_bd, stride_b2d)
+            )
+            a_off = tl.where(is_main, a_rows, a2_rows)[:, None] * tl.where(
+                is_main, stride_ab, stride_a2b
+            ) + cols[None, :] * tl.where(is_main, stride_ad, stride_a2d)
+            da_ptrs = tl.where(is_main, dA, dA2) + a_off
+            if USE_KAHAN:
+                dac_ptrs = tl.where(is_main, dAC, dA2C) + a_off
+            if EVEN_D:
+                col_mask = d_inds[None, :] < BLOCK_D
+            else:
+                col_mask = d_inds[None, :] < tl.where(is_main, D - d * BLOCK_D, BLOCK_D)
+            lock_offset = tl.where(d < n_main, d // tl.cdiv(D, BLOCK_D * n_locks), n_locks - 1)
+        elif HAS_MAIN:
+            cols = d * BLOCK_D + d_inds
+            b_ptrs = Bp + b_rows[:, None] * stride_bb + cols[None, :] * stride_bd
+            a_off = a_rows[:, None] * stride_ab + cols[None, :] * stride_ad
+            da_ptrs = dA + a_off
+            if USE_KAHAN:
+                dac_ptrs = dAC + a_off
+            if EVEN_D:
+                col_mask = d_inds[None, :] < BLOCK_D
+            else:
+                col_mask = d_inds[None, :] < (D - d * BLOCK_D)
+            lock_offset = d // tl.cdiv(D, BLOCK_D * n_locks)
         else:
-            mask = partial_mask_b & (d_inds < (D - d * BLOCK_D))
+            cols = d * BLOCK_D + d_inds
+            b_ptrs = B2p + b2_rows[:, None] * stride_b2b + cols[None, :] * stride_b2d
+            a_off = a2_rows[:, None] * stride_a2b + cols[None, :] * stride_a2d
+            da_ptrs = dA2 + a_off
+            if USE_KAHAN:
+                dac_ptrs = dA2C + a_off
+            col_mask = d_inds[None, :] < BLOCK_D
+            lock_offset = d // tl.cdiv(D2, BLOCK_D * n_locks)
 
-        b = tl.load(b_ptrs, mask=mask, other=0.0)
+        b = tl.load(b_ptrs, mask=partial_mask_b & col_mask, other=0.0)
 
         da_i = tl.dot(do, b, input_precision=DOT_PRECISION).to(da_ptrs.dtype.element_ty)
 
-        if EVEN_D:
-            mask = partial_mask_a
-        else:
-            mask = partial_mask_a & (d_inds < (D - d * BLOCK_D))
-
-        lock_offset = d // tl.cdiv(D, BLOCK_D * n_locks)
         this_da_lock_ptr = da_lock_ptr + lock_offset
 
         if USE_KAHAN:
-            tl_lock_kahan_sum(da_ptrs, dac_ptrs, da_i, mask, this_da_lock_ptr)
+            tl_lock_kahan_sum(da_ptrs, dac_ptrs, da_i, partial_mask_a & col_mask, this_da_lock_ptr)
         else:
-            tl_lock_add(da_ptrs, da_i, mask, this_da_lock_ptr)
-
-        b_ptrs += BLOCK_D * stride_bd
-        da_ptrs += BLOCK_D * stride_ad
-        if USE_KAHAN:
-            dac_ptrs += BLOCK_D * stride_ad
+            tl_lock_add(da_ptrs, da_i, partial_mask_a & col_mask, this_da_lock_ptr)
 
 
 @triton.jit
@@ -97,10 +150,8 @@ def _cce_backward_kernel(
     dBias,
     dE2,
     dE2C,
-    dE2Locks,
     dC2,
     dC2C,
-    dC2Locks,
     B,
     D,
     D2,
@@ -112,10 +163,6 @@ def _cce_backward_kernel(
     n_de_locks_1,
     n_dc_locks_0,
     n_dc_locks_1,
-    n_de2_locks_0,
-    n_de2_locks_1,
-    n_dc2_locks_0,
-    n_dc2_locks_1,
     stride_eb,
     stride_ed,
     stride_cv,
@@ -158,11 +205,8 @@ def _cce_backward_kernel(
     CHUNKED_C: tl.constexpr,
     HAS_E2: tl.constexpr,
     EVEN_D2: tl.constexpr,
-    MM_BACK_EVEN_D2: tl.constexpr,
     COMPUTE_DE2: tl.constexpr,
     COMPUTE_DC2: tl.constexpr,
-    KAHAN_E2: tl.constexpr,
-    KAHAN_C2: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_b_chunks = tl.cdiv(B, BLOCK_B)
@@ -294,7 +338,7 @@ def _cce_backward_kernel(
 
     d_accum = d_accum.to(e_ptrs.dtype.element_ty)
 
-    if COMPUTE_DE:
+    if COMPUTE_DE or COMPUTE_DE2:
         if FILTER_E_GRAD:
             should_skip_e = should_skip
         else:
@@ -305,23 +349,39 @@ def _cce_backward_kernel(
 
             _mm_backward(
                 d_accum,
-                dE + (offs_b[:, None] * stride_eb),
-                dEC + (offs_b[:, None] * stride_eb) if KAHAN_E else None,
+                dE,
+                dEC,
+                offs_b,
+                stride_eb,
+                stride_ed,
                 offs_b[:, None] < BMax,
                 dELocks + lock_offset,
                 n_de_locks_1,
-                C + offs_v[:, None] * stride_cv,
-                offs_v[:, None] < V,
-                stride_ed,
+                C,
+                offs_v,
+                stride_cv,
                 stride_cd,
+                offs_v[:, None] < V,
                 D,
+                dE2,
+                dE2C,
+                offs_b,
+                stride_e2b,
+                stride_e2d,
+                C2,
+                offs_v,
+                stride_c2v,
+                stride_c2d,
+                D2,
                 MM_BACK_BLOCK_D,
                 MM_BACK_EVEN_D,
                 KAHAN_E,
+                COMPUTE_DE,
+                COMPUTE_DE2,
                 DOT_PRECISION,
             )
 
-    if COMPUTE_DC:
+    if COMPUTE_DC or COMPUTE_DC2:
         if FILTER_C_GRAD:
             should_skip_c = should_skip
         else:
@@ -331,78 +391,38 @@ def _cce_backward_kernel(
             lock_offset = (pid_v // tl.cdiv(VCount, BLOCK_V * n_dc_locks_0)) * n_dc_locks_1
             dc_v = local_v if CHUNKED_C else offs_v
 
+            # dC2 rows are global vocab rows even when dC is chunked.
             _mm_backward(
                 tl.trans(d_accum),
-                dC + (dc_v[:, None] * stride_dcv),
-                dCC + (offs_v[:, None] * stride_dcv) if KAHAN_C else None,
+                dC,
+                dCC,
+                dc_v,
+                stride_dcv,
+                stride_dcd,
                 offs_v[:, None] < V,
                 dCLocks + lock_offset,
                 n_dc_locks_1,
-                E + (offs_b[:, None] * stride_eb),
-                offs_b[:, None] < BMax,
-                stride_dcd,
+                E,
+                offs_b,
+                stride_eb,
                 stride_ed,
+                offs_b[:, None] < BMax,
                 D,
+                dC2,
+                dC2C,
+                offs_v,
+                stride_dc2v,
+                stride_dc2d,
+                E2,
+                offs_b,
+                stride_e2b,
+                stride_e2d,
+                D2,
                 MM_BACK_BLOCK_D,
                 MM_BACK_EVEN_D,
                 KAHAN_C,
-                DOT_PRECISION,
-            )
-
-    if COMPUTE_DE2:
-        if FILTER_E_GRAD:
-            should_skip_e2 = should_skip
-        else:
-            should_skip_e2 = False
-
-        if not should_skip_e2:
-            lock_offset = (pid_b // tl.cdiv(B, BLOCK_B * n_de2_locks_0)) * n_de2_locks_1
-
-            _mm_backward(
-                d_accum,
-                dE2 + (offs_b[:, None] * stride_e2b),
-                dE2C + (offs_b[:, None] * stride_e2b) if KAHAN_E2 else None,
-                offs_b[:, None] < BMax,
-                dE2Locks + lock_offset,
-                n_de2_locks_1,
-                C2 + offs_v[:, None] * stride_c2v,
-                offs_v[:, None] < V,
-                stride_e2d,
-                stride_c2d,
-                D2,
-                MM_BACK_BLOCK_D,
-                MM_BACK_EVEN_D2,
-                KAHAN_E2,
-                DOT_PRECISION,
-            )
-
-    if COMPUTE_DC2:
-        if FILTER_C_GRAD:
-            should_skip_c2 = should_skip
-        else:
-            should_skip_c2 = False
-
-        if not should_skip_c2:
-            # dC2 rows are global vocab rows even when dC is chunked.
-            lock_offset = (
-                (VStart + pid_v * BLOCK_V) // (BLOCK_V * tl.cdiv(V, BLOCK_V * n_dc2_locks_0))
-            ) * n_dc2_locks_1
-
-            _mm_backward(
-                tl.trans(d_accum),
-                dC2 + (offs_v[:, None] * stride_dc2v),
-                dC2C + (offs_v[:, None] * stride_dc2v) if KAHAN_C2 else None,
-                offs_v[:, None] < V,
-                dC2Locks + lock_offset,
-                n_dc2_locks_1,
-                E2 + (offs_b[:, None] * stride_e2b),
-                offs_b[:, None] < BMax,
-                stride_dc2d,
-                stride_e2d,
-                D2,
-                MM_BACK_BLOCK_D,
-                MM_BACK_EVEN_D2,
-                KAHAN_C2,
+                COMPUTE_DC,
+                COMPUTE_DC2,
                 DOT_PRECISION,
             )
 
@@ -436,20 +456,38 @@ _cce_backward_kernel = triton.heuristics(  # type: ignore
         "GROUP_B": lambda args: 8,
         "COMPUTE_DC": lambda args: args["dC"] is not None,
         "COMPUTE_DE": lambda args: args["dE"] is not None,
-        "KAHAN_E": lambda args: args["dEC"] is not None,
-        "KAHAN_C": lambda args: args["dCC"] is not None,
         "COMPUTE_DBIAS": lambda args: args["dBias"] is not None,
         "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee",
         "HAS_E2": lambda args: args["E2"] is not None,
         "EVEN_D2": lambda args: (args["D2"] % args["BLOCK_D"]) == 0,
-        "MM_BACK_EVEN_D2": lambda args: (args["D2"] % _cce_back_block_d(args)) == 0,
         "COMPUTE_DE2": lambda args: args["dE2"] is not None,
         "COMPUTE_DC2": lambda args: args["dC2"] is not None,
-        "KAHAN_E2": lambda args: args["dE2C"] is not None,
-        "KAHAN_C2": lambda args: args["dC2C"] is not None,
+        "KAHAN_E": lambda args: args["dEC"] is not None or args["dE2C"] is not None,
+        "KAHAN_C": lambda args: args["dCC"] is not None or args["dC2C"] is not None,
     }
 )(_cce_backward_kernel)
 _cce_backward_kernel = cce_backward_autotune()(_cce_backward_kernel)  # type: ignore
+
+
+def _second_operand_multiple() -> int:
+    # The backward tile is 2 * BLOCK_D: 64 for the default config, up to 256 under autotune.
+    from cut_cross_entropy.tl_autotune import _AUTOTUNE
+
+    return 256 if _AUTOTUNE else 64
+
+
+def _pad_second_operand(e2: torch.Tensor, c2: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Zero-pad the second operand pair to a whole backward tile.
+
+    ``dE2`` / ``dC2`` use a mask-free tiled helper, so the column count must be a multiple
+    of the tile. Zero columns do not change the logits.
+    """
+    multiple = _second_operand_multiple()
+    rem = e2.size(-1) % multiple
+    if rem == 0:
+        return e2, c2
+    pad = multiple - rem
+    return torch.nn.functional.pad(e2, (0, pad)), torch.nn.functional.pad(c2, (0, pad))
 
 
 def cce_backward_kernel(
@@ -488,7 +526,10 @@ def cce_backward_kernel(
         assert e2.size(0) == e.size(0) and c2.size(0) == c.size(0)
         assert e2.size(1) == c2.size(1)
         assert e2.dtype == e.dtype and c2.dtype == c.dtype
-        assert e2.is_contiguous()
+        d2 = e2.size(1)
+        e2_requires_grad, c2_requires_grad = e2.requires_grad, c2.requires_grad
+        e2, c2 = _pad_second_operand(e2, c2)
+        e2 = e2.contiguous()
     else:
         assert c2 is None
     assert lse.size(0) == e.size(0) or (valids is not None and lse.size(0) == valids.size(0))
@@ -552,11 +593,11 @@ def cce_backward_kernel(
     de2 = dc2 = de2c = dc2c = None
     if e2 is not None:
         assert c2 is not None
-        if e2.requires_grad:
+        if e2_requires_grad:
             de2 = torch.zeros_like(e2, dtype=de_dtype)
             if accum_e_fp32 and not can_use_fp32_accum:
                 de2c = torch.zeros_like(e2)
-        if c2.requires_grad:
+        if c2_requires_grad:
             dc2 = torch.zeros_like(c2, dtype=dc_dtype)
             if accum_c_fp32 and not can_use_fp32_accum:
                 dc2c = torch.zeros_like(c2)
@@ -599,14 +640,14 @@ def cce_backward_kernel(
         assert vocab_ordering.stride(0) == 1
 
     nd_locks = triton.cdiv(c.size(1), 64)
-    if de is not None:
+    if de is not None or de2 is not None:
         de_locks = e.new_zeros((triton.cdiv(B, 128), nd_locks), dtype=torch.int32)
         de_lock_sizes = de_locks.size()
     else:
         de_locks = None
         de_lock_sizes = (None, None)
 
-    if dc is not None:
+    if dc is not None or dc2 is not None:
         dc_locks = c.new_zeros((triton.cdiv(chunk_size, 128), nd_locks), dtype=torch.int32)
         dc_lock_sizes = dc_locks.size()
     else:
@@ -614,17 +655,6 @@ def cce_backward_kernel(
         dc_lock_sizes = (None, None)
 
     D2 = 0 if c2 is None else c2.size(1)
-    nd2_locks = triton.cdiv(max(D2, 1), 64)
-    de2_locks = (
-        e.new_zeros((triton.cdiv(B, 128), nd2_locks), dtype=torch.int32)
-        if de2 is not None
-        else None
-    )
-    dc2_locks = (
-        c.new_zeros((triton.cdiv(c.size(0), 128), nd2_locks), dtype=torch.int32)
-        if dc2 is not None
-        else None
-    )
     e2_strides = (e2.stride(0), e2.stride(1)) if e2 is not None else (1, 1)
     c2_strides = (c2.stride(0), c2.stride(1)) if c2 is not None else (1, 1)
     dc2_strides = (dc2.stride(0), dc2.stride(1)) if dc2 is not None else c2_strides
@@ -655,10 +685,8 @@ def cce_backward_kernel(
             dbias,
             de2,
             de2c,
-            de2_locks,
             dc2,
             dc2c,
-            dc2_locks,
             B,
             e.size(1),
             D2,
@@ -668,10 +696,6 @@ def cce_backward_kernel(
             v_count,
             *de_lock_sizes,
             *dc_lock_sizes,
-            triton.cdiv(B, 128),
-            nd2_locks,
-            triton.cdiv(c.size(0), 128),
-            nd2_locks,
             e.stride(0),
             e.stride(1),
             c.stride(0),
@@ -719,10 +743,10 @@ def cce_backward_kernel(
 
     if de2 is not None:
         assert e2 is not None
-        de2 = de2.to(dtype=e2.dtype)
+        de2 = de2[:, :d2].to(dtype=e2.dtype)
 
     if dc2 is not None:
         assert c2 is not None
-        dc2 = dc2.to(dtype=c2.dtype)
+        dc2 = dc2[:, :d2].to(dtype=c2.dtype)
 
     return de, dc, dbias, de2, dc2
