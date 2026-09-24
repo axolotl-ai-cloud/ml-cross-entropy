@@ -186,3 +186,63 @@ def test_rejects_partial_or_mismatched_second_operand():
         linear_cross_entropy(e, c, targets, e2=e2)
     with pytest.raises(ValueError, match="do not match"):
         linear_cross_entropy(e, c, targets, e2=e2, c2=c2[:-1])
+
+
+@skip_no_cuda
+@pytest.mark.parametrize("d2", [5, 2, 3, 64])
+@pytest.mark.parametrize("has_bias", [True, False])
+@pytest.mark.parametrize("labels_case", ["all_ignored", "one_valid", "all_valid"])
+@pytest.mark.parametrize("reduction", ["none", "sum", "mean"])
+def test_tiny_shapes_backward_compiles_and_matches(d2, has_bias, labels_case, reduction):
+    """D and D2 both off the backward tile with dE, dE2, dC2 all requested used to fail to
+    compile (MLIR dominance error in Triton's layout-conversion pass)."""
+    if labels_case == "all_ignored" and reduction == "mean":
+        pytest.skip("mean over zero supervised tokens is undefined")
+    torch.manual_seed(17)
+    B, D, V = 5, 5, 11
+    e = torch.randn(1, B, D, device="cuda", dtype=torch.bfloat16).requires_grad_()
+    c = torch.randn(V, D, device="cuda", dtype=torch.bfloat16)
+    e2 = torch.randn(1, B, d2, device="cuda", dtype=torch.bfloat16).requires_grad_()
+    c2 = torch.randn(V, d2, device="cuda", dtype=torch.bfloat16).requires_grad_()
+    bias = (
+        torch.randn(V, device="cuda", dtype=torch.bfloat16).requires_grad_() if has_bias else None
+    )
+    labels = torch.full((1, B), IGNORE_INDEX, device="cuda", dtype=torch.long)
+    if labels_case == "one_valid":
+        labels[0, 2] = 3
+    elif labels_case == "all_valid":
+        labels = torch.randint(0, V, (1, B), device="cuda")
+
+    ref = _reference(e, c, e2, c2, bias, labels, None, False, reduction)
+    ref.sum().backward()
+    ref_grads = [t.grad.clone() if t is not None else None for t in (e, e2, c2, bias)]
+    for t in (e, e2, c2, bias):
+        if t is not None:
+            t.grad = None
+
+    loss = linear_cross_entropy(
+        e,
+        c,
+        labels,
+        bias=bias,
+        reduction=reduction,
+        e2=e2,
+        c2=c2,
+        accum_e_fp32=True,
+        accum_c_fp32=True,
+    )
+    loss.sum().backward()
+    assert loss.shape == ref.shape
+    assert torch.isfinite(loss).all()
+    if labels_case == "all_ignored":
+        assert loss.abs().sum() == 0 and ref.abs().sum() == 0
+    else:
+        assert _rel(loss, ref) < 2e-2
+    for name, t, g in zip(("e", "e2", "c2", "bias"), (e, e2, c2, bias), ref_grads):
+        if t is None:
+            continue
+        assert t.grad is not None and t.grad.shape == t.shape, name
+        if g.abs().sum() == 0:
+            assert t.grad.abs().sum() == 0, name
+        else:
+            assert _rel(t.grad, g) < 1e-1, (name, _rel(t.grad, g))
