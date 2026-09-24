@@ -1,5 +1,4 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
-from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -15,6 +14,7 @@ from cut_cross_entropy.utils import (
     _build_flat_valids,
     _handle_eps,
     handle_reduction_none,
+    zero3_gather,
 )
 from cut_cross_entropy.vocab_parallel.utils import (
     VocabParallelOptions,
@@ -198,14 +198,7 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
 
         # Under DeepSpeed ZeRO-3, saved tensors for c/bias may be stale
         # local shards. Re-gather the full parameters before backward.
-        if params.zero3_params:
-            from deepspeed.runtime.zero.partition_parameters import GatheredParameters
-
-            gather_ctx = GatheredParameters(params.zero3_params, modifier_rank=None)
-        else:
-            gather_ctx = nullcontext()
-
-        with gather_ctx:
+        with zero3_gather(params.zero3_params):
             if params.zero3_params:
                 # After gathering, read the full weight/bias from the
                 # parameter objects since the saved tensor references

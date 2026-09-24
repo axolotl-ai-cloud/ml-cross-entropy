@@ -1,6 +1,7 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 import functools
 import importlib.metadata
+from contextlib import nullcontext
 
 import packaging.version
 import torch
@@ -129,3 +130,22 @@ def recommend_c_grad_chunk_size(
     memory_tiles = 1 << (memory_tiles.bit_length() - 1)
     chunk_size = block_v * min(occupancy_tiles, memory_tiles)
     return chunk_size if chunk_size < vocab_size else 0
+
+
+def zero3_gather(params: list[torch.Tensor]):
+    """Gather the DeepSpeed ZeRO-3 parameters in ``params`` that are currently partitioned.
+
+    A parameter DeepSpeed already holds (persistent because it is small, tied to the
+    embedding, or prefetched for its module) is still claimed by that submodule, and
+    releasing it from a second GatheredParameters context raises.
+    """
+    if not any(hasattr(p, "ds_id") for p in params):
+        return nullcontext()
+    from deepspeed.runtime.zero.partition_parameters import GatheredParameters, ZeroParamStatus
+
+    ds_params = [
+        p for p in params if hasattr(p, "ds_id") and p.ds_status == ZeroParamStatus.NOT_AVAILABLE
+    ]
+    if not ds_params:
+        return nullcontext()
+    return GatheredParameters(ds_params, modifier_rank=None)

@@ -15,12 +15,13 @@ except ImportError:
         DTensor = None
         Shard = None
 
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 
 import torch.nn as nn
 
 from cut_cross_entropy import VocabParallelOptions, linear_cross_entropy
 from cut_cross_entropy.cce_utils import CCEPreset
+from cut_cross_entropy.utils import zero3_gather
 
 TransformersModelT = TypeVar("TransformersModelT", bound=transformers.PreTrainedModel)
 
@@ -195,21 +196,6 @@ def _base_weight(base_layer: nn.Module) -> torch.Tensor:
     return weight
 
 
-def _zero3_gather(params: list[torch.Tensor]):
-    if not any(hasattr(p, "ds_id") for p in params):
-        return nullcontext()
-    from deepspeed.runtime.zero.partition_parameters import GatheredParameters, ZeroParamStatus
-
-    # A parameter DeepSpeed already holds (tied to the embedding, persistent, or prefetched)
-    # is still claimed by its submodule; re-gathering it would fail on release.
-    ds_params = [
-        p for p in params if hasattr(p, "ds_id") and p.ds_status == ZeroParamStatus.NOT_AVAILABLE
-    ]
-    if not ds_params:
-        return nullcontext()
-    return GatheredParameters(ds_params, modifier_rank=None)
-
-
 AdapterRouting = list[tuple[str, torch.Tensor]]
 
 
@@ -320,7 +306,7 @@ def _lora_lm_head_inputs(
     if base_layer.bias is not None:
         gather_params.append(base_layer.bias)
 
-    with _zero3_gather(gather_params):
+    with zero3_gather(gather_params):
         kdtype = weight.dtype
         if e.dtype == torch.float32 and kdtype in (torch.bfloat16, torch.float16):
             e = e.to(kdtype)
