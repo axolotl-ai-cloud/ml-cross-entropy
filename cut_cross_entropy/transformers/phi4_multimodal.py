@@ -27,7 +27,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
-    apply_lce,
+    apply_lce_lm_head,
     patch_remote_model_class,
 )
 
@@ -83,9 +83,9 @@ def cce_forward_multimodal(
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
-        loss = apply_lce(
+        loss = apply_lce_lm_head(
             hidden_states[:, slice_indices, :],
-            self.lm_head.weight,
+            self.lm_head,
             labels,
             _PATCH_OPTS,
             **kwargs,

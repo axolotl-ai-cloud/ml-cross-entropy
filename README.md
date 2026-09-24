@@ -264,6 +264,14 @@ model = cce_patch(model)
 
 We currently support the Llama, Phi3, Mistral, and Gemma2 families of models.
 
+#### PEFT adapters on `lm_head`
+
+The patched forwards pass the `lm_head` module (not `lm_head.weight`) to `apply_lce_lm_head`, so a
+PEFT LoRA or DoRA adapter on the head is part of the loss. The adapter is folded into the
+classifier as `[e | s·A(e)] @ [W | B]ᵀ`, which keeps logits unmaterialised while giving `A` and
+`B` exact gradients. The extra cost is a `(V, D + r)` copy of the classifier per step and its
+full gradient in the backward. Merged or disabled adapters fall back to the plain weight.
+
 `cce_patch` takes two options. The first is the linear-cross-entropy implementation to use. Currently `"cce"` or `"torch_compile"`.
 
 The second
