@@ -78,6 +78,8 @@ def _block_is_filtered(check_val: tl.tensor, filter_eps: tl.tensor) -> tl.tensor
 def _cce_backward_kernel(
     E,
     C,
+    E2,
+    C2,
     Bias,
     LSE,
     dOut,
@@ -93,8 +95,15 @@ def _cce_backward_kernel(
     dCC,
     dCLocks,
     dBias,
+    dE2,
+    dE2C,
+    dE2Locks,
+    dC2,
+    dC2C,
+    dC2Locks,
     B,
     D,
+    D2,
     V,
     BMax,
     VStart,
@@ -103,12 +112,22 @@ def _cce_backward_kernel(
     n_de_locks_1,
     n_dc_locks_0,
     n_dc_locks_1,
+    n_de2_locks_0,
+    n_de2_locks_1,
+    n_dc2_locks_0,
+    n_dc2_locks_1,
     stride_eb,
     stride_ed,
     stride_cv,
     stride_cd,
     stride_dcv,
     stride_dcd,
+    stride_e2b,
+    stride_e2d,
+    stride_c2v,
+    stride_c2d,
+    stride_dc2v,
+    stride_dc2d,
     stride_biasv,
     stride_vb,
     filter_eps,
@@ -137,6 +156,13 @@ def _cce_backward_kernel(
     COMPUTE_DBIAS: tl.constexpr,
     DOT_PRECISION: tl.constexpr,
     CHUNKED_C: tl.constexpr,
+    HAS_E2: tl.constexpr,
+    EVEN_D2: tl.constexpr,
+    MM_BACK_EVEN_D2: tl.constexpr,
+    COMPUTE_DE2: tl.constexpr,
+    COMPUTE_DC2: tl.constexpr,
+    KAHAN_E2: tl.constexpr,
+    KAHAN_C2: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_b_chunks = tl.cdiv(B, BLOCK_B)
@@ -183,6 +209,27 @@ def _cce_backward_kernel(
         e_ptrs += BLOCK_D * stride_ed
         c_ptrs += BLOCK_D * stride_cd
 
+    if HAS_E2:
+        e2_ptrs = E2 + (offs_b[:, None] * stride_e2b + offs_d[None, :] * stride_e2d)
+        c2_ptrs = C2 + (offs_v[None, :] * stride_c2v + offs_d[:, None] * stride_c2d)
+        for d in range(0, tl.cdiv(D2, BLOCK_D)):
+            e_mask = offs_b[:, None] < BMax
+            if not EVEN_D2:
+                e_mask = e_mask & (offs_d[None, :] < (D2 - d * BLOCK_D))
+
+            e2 = tl.load(e2_ptrs, mask=e_mask, other=0.0)
+
+            c_mask = offs_v[None, :] < V
+            if not EVEN_D2:
+                c_mask = c_mask & (offs_d[:, None] < (D2 - d * BLOCK_D))
+
+            c2 = tl.load(c2_ptrs, mask=c_mask, other=0.0)
+
+            accum = tl.dot(e2, c2, accum, input_precision=DOT_PRECISION)
+
+            e2_ptrs += BLOCK_D * stride_e2d
+            c2_ptrs += BLOCK_D * stride_c2d
+
     tl.debug_barrier()
 
     if HAS_BIAS:
@@ -215,10 +262,14 @@ def _cce_backward_kernel(
         is_target = None
 
     should_skip = False
-    if (FILTER_E_GRAD and COMPUTE_DE) and (FILTER_C_GRAD and COMPUTE_DC):
+    if (FILTER_E_GRAD and (COMPUTE_DE or COMPUTE_DE2)) and (
+        FILTER_C_GRAD and (COMPUTE_DC or COMPUTE_DC2)
+    ):
         if _block_is_filtered(tl.abs(d_accum), filter_eps):
             return
-    elif (FILTER_E_GRAD and COMPUTE_DE) or (FILTER_C_GRAD and COMPUTE_DC):
+    elif (FILTER_E_GRAD and (COMPUTE_DE or COMPUTE_DE2)) or (
+        FILTER_C_GRAD and (COMPUTE_DC or COMPUTE_DC2)
+    ):
         should_skip = _block_is_filtered(tl.abs(d_accum), filter_eps)
 
     if HAS_SOFTCAP:
@@ -298,6 +349,63 @@ def _cce_backward_kernel(
                 DOT_PRECISION,
             )
 
+    if COMPUTE_DE2:
+        if FILTER_E_GRAD:
+            should_skip_e2 = should_skip
+        else:
+            should_skip_e2 = False
+
+        if not should_skip_e2:
+            lock_offset = (pid_b // tl.cdiv(B, BLOCK_B * n_de2_locks_0)) * n_de2_locks_1
+
+            _mm_backward(
+                d_accum,
+                dE2 + (offs_b[:, None] * stride_e2b),
+                dE2C + (offs_b[:, None] * stride_e2b) if KAHAN_E2 else None,
+                offs_b[:, None] < BMax,
+                dE2Locks + lock_offset,
+                n_de2_locks_1,
+                C2 + offs_v[:, None] * stride_c2v,
+                offs_v[:, None] < V,
+                stride_e2d,
+                stride_c2d,
+                D2,
+                MM_BACK_BLOCK_D,
+                MM_BACK_EVEN_D2,
+                KAHAN_E2,
+                DOT_PRECISION,
+            )
+
+    if COMPUTE_DC2:
+        if FILTER_C_GRAD:
+            should_skip_c2 = should_skip
+        else:
+            should_skip_c2 = False
+
+        if not should_skip_c2:
+            # dC2 rows are global vocab rows even when dC is chunked.
+            lock_offset = (
+                (VStart + pid_v * BLOCK_V) // (BLOCK_V * tl.cdiv(V, BLOCK_V * n_dc2_locks_0))
+            ) * n_dc2_locks_1
+
+            _mm_backward(
+                tl.trans(d_accum),
+                dC2 + (offs_v[:, None] * stride_dc2v),
+                dC2C + (offs_v[:, None] * stride_dc2v) if KAHAN_C2 else None,
+                offs_v[:, None] < V,
+                dC2Locks + lock_offset,
+                n_dc2_locks_1,
+                E2 + (offs_b[:, None] * stride_e2b),
+                offs_b[:, None] < BMax,
+                stride_dc2d,
+                stride_e2d,
+                D2,
+                MM_BACK_BLOCK_D,
+                MM_BACK_EVEN_D2,
+                KAHAN_C2,
+                DOT_PRECISION,
+            )
+
 
 def _cce_back_block_d(args) -> int:
     block_d = args["BLOCK_D"]
@@ -332,6 +440,13 @@ _cce_backward_kernel = triton.heuristics(  # type: ignore
         "KAHAN_C": lambda args: args["dCC"] is not None,
         "COMPUTE_DBIAS": lambda args: args["dBias"] is not None,
         "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee",
+        "HAS_E2": lambda args: args["E2"] is not None,
+        "EVEN_D2": lambda args: (args["D2"] % args["BLOCK_D"]) == 0,
+        "MM_BACK_EVEN_D2": lambda args: (args["D2"] % _cce_back_block_d(args)) == 0,
+        "COMPUTE_DE2": lambda args: args["dE2"] is not None,
+        "COMPUTE_DC2": lambda args: args["dC2"] is not None,
+        "KAHAN_E2": lambda args: args["dE2C"] is not None,
+        "KAHAN_C2": lambda args: args["dC2C"] is not None,
     }
 )(_cce_backward_kernel)
 _cce_backward_kernel = cce_backward_autotune()(_cce_backward_kernel)  # type: ignore
@@ -357,9 +472,25 @@ def cce_backward_kernel(
     reduce_e_grad: bool = False,
     pg: torch.distributed.ProcessGroup | None = None,
     c_grad_chunk_size: int = 0,
-) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
+) -> tuple[
+    torch.Tensor | None,
+    torch.Tensor | None,
+    torch.Tensor | None,
+    torch.Tensor | None,
+    torch.Tensor | None,
+]:
     assert do.numel() in (e.size(0), 1)
     assert c.size(1) == e.size(1)
+    if e2 is not None:
+        assert c2 is not None
+        assert e2.size(0) == e.size(0) and c2.size(0) == c.size(0)
+        assert e2.size(1) == c2.size(1)
+        assert e2.dtype == e.dtype and c2.dtype == c.dtype
+        assert e2.is_contiguous()
+    else:
+        assert c2 is None
     assert lse.size(0) == e.size(0) or (valids is not None and lse.size(0) == valids.size(0))
     assert e.dtype in (
         torch.float16,
@@ -416,6 +547,20 @@ def cce_backward_kernel(
         assert bias is not None
         assert dbias.stride() == bias.stride()
 
+    # The second operand pair is small (LoRA rank), so its gradients follow the same
+    # accumulation policy as e / c but are never chunked.
+    de2 = dc2 = de2c = dc2c = None
+    if e2 is not None:
+        assert c2 is not None
+        if e2.requires_grad:
+            de2 = torch.zeros_like(e2, dtype=de_dtype)
+            if accum_e_fp32 and not can_use_fp32_accum:
+                de2c = torch.zeros_like(e2)
+        if c2.requires_grad:
+            dc2 = torch.zeros_like(c2, dtype=dc_dtype)
+            if accum_c_fp32 and not can_use_fp32_accum:
+                dc2c = torch.zeros_like(c2)
+
     if accum_e_fp32 and not can_use_fp32_accum:
         dec = torch.zeros_like(e) if de is not None else None
     else:
@@ -468,6 +613,22 @@ def cce_backward_kernel(
         dc_locks = None
         dc_lock_sizes = (None, None)
 
+    D2 = 0 if c2 is None else c2.size(1)
+    nd2_locks = triton.cdiv(max(D2, 1), 64)
+    de2_locks = (
+        e.new_zeros((triton.cdiv(B, 128), nd2_locks), dtype=torch.int32)
+        if de2 is not None
+        else None
+    )
+    dc2_locks = (
+        c.new_zeros((triton.cdiv(c.size(0), 128), nd2_locks), dtype=torch.int32)
+        if dc2 is not None
+        else None
+    )
+    e2_strides = (e2.stride(0), e2.stride(1)) if e2 is not None else (1, 1)
+    c2_strides = (c2.stride(0), c2.stride(1)) if c2 is not None else (1, 1)
+    dc2_strides = (dc2.stride(0), dc2.stride(1)) if dc2 is not None else c2_strides
+
     for v_start in range(0, c.size(0), chunk_size):
         v_count = min(chunk_size, c.size(0) - v_start)
         if chunked_c:
@@ -475,6 +636,8 @@ def cce_backward_kernel(
         _cce_backward_kernel[grid](
             e,
             c,
+            e2,
+            c2,
             bias,
             lse,
             do,
@@ -490,26 +653,40 @@ def cce_backward_kernel(
             dcc,
             dc_locks,
             dbias,
+            de2,
+            de2c,
+            de2_locks,
+            dc2,
+            dc2c,
+            dc2_locks,
             B,
             e.size(1),
+            D2,
             c.size(0),
             e.size(0),
             v_start,
             v_count,
             *de_lock_sizes,
             *dc_lock_sizes,
+            triton.cdiv(B, 128),
+            nd2_locks,
+            triton.cdiv(c.size(0), 128),
+            nd2_locks,
             e.stride(0),
             e.stride(1),
             c.stride(0),
             c.stride(1),
             *dc_strides,
+            *e2_strides,
+            *c2_strides,
+            *dc2_strides,
             1 if bias is None else bias.stride(0),
             1 if valids is None else valids.stride(0),
             filter_eps,
             shift=shift,
             B_BIN=b_bin_fn(B),
-            FILTER_E_GRAD=filter_e_grad and de is not None,
-            FILTER_C_GRAD=filter_c_grad and dc is not None,
+            FILTER_E_GRAD=filter_e_grad and (de is not None or de2 is not None),
+            FILTER_C_GRAD=filter_c_grad and (dc is not None or dc2 is not None),
             CHUNKED_C=chunked_c,
         )
         if chunked_c:
@@ -527,6 +704,8 @@ def cce_backward_kernel(
 
     if reduce_e_grad and de is not None:
         de = vp_reduce_e_grad(de, pg)
+    if reduce_e_grad and de2 is not None:
+        de2 = vp_reduce_e_grad(de2, pg)
 
     if dbias is not None:
         assert bias is not None
@@ -538,4 +717,12 @@ def cce_backward_kernel(
     if de is not None:
         de = de.to(dtype=e.dtype)
 
-    return de, dc, dbias
+    if de2 is not None:
+        assert e2 is not None
+        de2 = de2.to(dtype=e2.dtype)
+
+    if dc2 is not None:
+        assert c2 is not None
+        dc2 = dc2.to(dtype=c2.dtype)
+
+    return de, dc, dbias, de2, dc2

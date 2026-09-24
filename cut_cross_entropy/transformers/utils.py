@@ -103,6 +103,8 @@ def apply_lce(
     bias: torch.Tensor | None = None,
     softcap: float | None = None,
     shift_labels: torch.Tensor | None = None,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
     **loss_kwargs,
 ) -> torch.Tensor:
     num_items_in_batch = loss_kwargs.get("num_items_in_batch", None)
@@ -166,6 +168,8 @@ def apply_lce(
         bias=bias,
         shift=shift,
         softcap=softcap,
+        e2=e2,
+        c2=c2,
         c_grad_chunk_size=opts.c_grad_chunk_size,
         **cce_kwargs,
     )
@@ -266,15 +270,21 @@ def _resolve_adapter_routing(
     return routing
 
 
+LoraLmHeadInputs = tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None
+]
+
+
 def _lora_lm_head_inputs(
     e: torch.Tensor, lm_head: nn.Module, routing: AdapterRouting | None = None
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None] | None:
-    """Fold the LoRA adapters of ``lm_head`` into an augmented (e, c, bias) triple.
+) -> LoraLmHeadInputs | None:
+    """Split the LoRA adapters of ``lm_head`` into ``(e, c, bias, e2, c2)`` kernel operands.
 
     ``logits = e @ W^T + sum_i scaling_i * dropout_i(e) @ A_i^T @ B_i^T`` is exactly
-    ``[e, z_1, ..., z_k] @ [W, B_1, ..., B_k]^T`` with ``z_i = scaling_i * A_i(dropout_i(e))``,
-    so the unmaterialised-logit kernel sees one wider classifier. Gradients reach ``A_i``
-    through ``z_i`` and ``B_i`` through the concatenated classifier.
+    ``e @ W^T + [z_1, ..., z_k] @ [B_1, ..., B_k]^T`` with ``z_i = scaling_i * A_i(dropout_i(e))``.
+    The kernels take that second operand pair directly, so ``W`` is passed as-is (no copy,
+    and no classifier gradient while it is frozen) and only the narrow ``(V, sum r_i)``
+    block ``B`` gets a gradient. Gradients reach ``A_i`` through ``z_i``.
 
     Without ``routing`` the module's active adapters apply to every position, and ``None``
     is returned when the module is not a LoRA layer or its adapters are merged/disabled,
@@ -315,8 +325,9 @@ def _lora_lm_head_inputs(
         if e.dtype == torch.float32 and kdtype in (torch.bfloat16, torch.float16):
             e = e.to(kdtype)
         bias = base_layer.bias
-        e_blocks: list[torch.Tensor] = [e]
-        c_blocks: list[torch.Tensor] = [weight]
+        c = weight
+        e_blocks: list[torch.Tensor] = []
+        c_blocks: list[torch.Tensor] = []
 
         for name, mask in adapters:
             lora_A = lm_head.lora_A[name]
@@ -391,6 +402,7 @@ def _lora_lm_head_inputs(
                 + 1
             )[:, None]
             if isinstance(dropout, nn.Identity) or not lm_head.training:
+                c = (mag_norm_scale * c).to(kdtype)
                 c_blocks = [(mag_norm_scale * block).to(kdtype) for block in c_blocks]
                 xd = x
             else:
@@ -401,10 +413,13 @@ def _lora_lm_head_inputs(
             e_blocks.append((lora_A(xd) * scaling).to(kdtype))
             c_blocks.append((mag_norm_scale * b_weight).to(kdtype))
 
-        e_aug = torch.cat(e_blocks, dim=-1)
-        c_aug = torch.cat(c_blocks, dim=-1)
+        if e_blocks:
+            e2 = e_blocks[0] if len(e_blocks) == 1 else torch.cat(e_blocks, dim=-1)
+            c2 = c_blocks[0] if len(c_blocks) == 1 else torch.cat(c_blocks, dim=-1)
+        else:
+            e2 = c2 = None
 
-    return e_aug, c_aug, bias
+    return e, c, bias, e2, c2
 
 
 def apply_lce_lm_head(
@@ -444,8 +459,9 @@ def apply_lce_lm_head(
     if lora_inputs is None:
         c = lm_head.weight
         bias = getattr(lm_head, "bias", None)
+        e2 = c2 = None
     else:
-        e, c, bias = lora_inputs
+        e, c, bias, e2, c2 = lora_inputs
 
     return apply_lce(
         e,
@@ -455,6 +471,8 @@ def apply_lce_lm_head(
         bias=bias,
         softcap=softcap,
         shift_labels=shift_labels,
+        e2=e2,
+        c2=c2,
         **loss_kwargs,
     )
 

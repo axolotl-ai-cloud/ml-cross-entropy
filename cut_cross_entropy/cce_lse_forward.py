@@ -12,6 +12,8 @@ from cut_cross_entropy.tl_utils import b_bin_fn, tl_logaddexp, tl_softcapping
 def _cce_lse_forward_kernel(
     E,
     C,
+    E2,
+    C2,
     Bias,
     LSE,
     LA,
@@ -21,17 +23,24 @@ def _cce_lse_forward_kernel(
     B,
     V,
     D,
+    D2,
     BMax,
     stride_eb,
     stride_ed,
     stride_cv,
     stride_cd,
+    stride_e2b,
+    stride_e2d,
+    stride_c2v,
+    stride_c2d,
     stride_biasv,
     stride_lse_b,
     stride_vb,
     num_locks,
     # Meta-parameters
     B_BIN,
+    HAS_E2: tl.constexpr,
+    EVEN_D2: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     HAS_VALIDS: tl.constexpr,
     BLOCK_B: tl.constexpr,
@@ -81,6 +90,27 @@ def _cce_lse_forward_kernel(
         e_ptrs += BLOCK_D * stride_ed
         c_ptrs += BLOCK_D * stride_cd
 
+    if HAS_E2:
+        e2_ptrs = E2 + (offs_b[:, None] * stride_e2b + offs_d[None, :] * stride_e2d)
+        c2_ptrs = C2 + (offs_v[None, :] * stride_c2v + offs_d[:, None] * stride_c2d)
+        for d in range(0, tl.cdiv(D2, BLOCK_D)):
+            e_mask = offs_b[:, None] < BMax
+            if not EVEN_D2:
+                e_mask = e_mask & (offs_d[None, :] < (D2 - d * BLOCK_D))
+
+            e2 = tl.load(e2_ptrs, mask=e_mask, other=0.0)
+
+            c_mask = offs_v[None, :] < V
+            if not EVEN_D2:
+                c_mask = c_mask & (offs_d[:, None] < (D2 - d * BLOCK_D))
+
+            c2 = tl.load(c2_ptrs, mask=c_mask, other=0.0)
+
+            accum = tl.dot(e2, c2, accum, input_precision=DOT_PRECISION)
+
+            e2_ptrs += BLOCK_D * stride_e2d
+            c2_ptrs += BLOCK_D * stride_c2d
+
     tl.debug_barrier()
 
     if HAS_BIAS:
@@ -120,18 +150,23 @@ def _cce_lse_forward_kernel(
 try:
     USE_TF32 = torch.get_float32_matmul_precision() == "high"
 except RuntimeError:
-    USE_TF32 = torch.backends.cuda.matmul.fp32_precision == "tf32" or torch.backends.fp32_precision == "tf32"
+    USE_TF32 = (
+        torch.backends.cuda.matmul.fp32_precision == "tf32"
+        or torch.backends.fp32_precision == "tf32"
+    )
 
 _cce_lse_forward_kernel = triton.jit(_cce_lse_forward_kernel)
 _cce_lse_forward_kernel = triton.heuristics(  # type: ignore
     {
         "EVEN_D": lambda args: args["D"] % args["BLOCK_D"] == 0,
+        "HAS_E2": lambda args: args["E2"] is not None,
+        "EVEN_D2": lambda args: args["D2"] % args["BLOCK_D"] == 0,
         "HAS_BIAS": lambda args: args["Bias"] is not None,
         "HAS_VALIDS": lambda args: args["Valids"] is not None,
         "HAS_SOFTCAP": lambda args: args["softcap"] is not None,
         "HAS_LA": lambda args: args["LA"] is not None,
         "GROUP_B": lambda args: 8,
-        "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee"
+        "DOT_PRECISION": lambda args: "tf32" if USE_TF32 else "ieee",
     }
 )(_cce_lse_forward_kernel)
 _cce_lse_forward_kernel = cce_forward_autotune()(_cce_lse_forward_kernel)  # type: ignore
@@ -145,6 +180,8 @@ def cce_lse_forward_kernel(
     valids: torch.Tensor | None = None,
     softcap: float | None = None,
     return_logit_avg: Literal[False] = False,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> torch.Tensor: ...
 
 
@@ -156,6 +193,8 @@ def cce_lse_forward_kernel(
     valids: torch.Tensor | None = None,
     softcap: float | None = None,
     return_logit_avg: Literal[True] = True,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]: ...
 
 
@@ -167,6 +206,8 @@ def cce_lse_forward_kernel(
     valids: torch.Tensor | None = None,
     softcap: float | None = None,
     return_logit_avg: bool = False,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor: ...
 
 
@@ -177,10 +218,26 @@ def cce_lse_forward_kernel(
     valids: torch.Tensor | None = None,
     softcap: float | None = None,
     return_logit_avg: bool = False,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
     # Check constraints.
     assert e.shape[1] == c.shape[1], "Incompatible dimensions"
     assert e.is_contiguous(), "Matrix A must be contiguous"
+    if e2 is not None:
+        assert c2 is not None
+        assert e2.shape[0] == e.shape[0] and e2.shape[1] == c2.shape[1]
+        assert c2.shape[0] == c.shape[0]
+        assert e2.dtype == e.dtype and c2.dtype == c.dtype
+        assert e2.is_contiguous()
+        D2 = c2.shape[1]
+        e2_strides = (e2.stride(0), e2.stride(1))
+        c2_strides = (c2.stride(0), c2.stride(1))
+    else:
+        assert c2 is None
+        D2 = 0
+        e2_strides = (1, 1)
+        c2_strides = (1, 1)
     if valids is not None:
         assert valids.ndim == 1
         B = valids.numel()
@@ -212,6 +269,8 @@ def cce_lse_forward_kernel(
     _cce_lse_forward_kernel[grid](
         e,
         c,
+        e2,
+        c2,
         bias,
         lse,  #
         logit_avg,
@@ -221,11 +280,14 @@ def cce_lse_forward_kernel(
         B,
         V,
         D,  #
+        D2,
         e.size(0),
         e.stride(0),
         e.stride(1),  #
         c.stride(0),
         c.stride(1),  #
+        *e2_strides,
+        *c2_strides,
         1 if bias is None else bias.stride(0),
         lse.stride(0),
         1 if valids is None else valids.stride(0),

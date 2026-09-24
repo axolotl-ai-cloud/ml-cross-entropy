@@ -55,13 +55,28 @@ def linear_cross_entropy(
     vocab_parallel_options: VocabParallelOptions | None = None,
     zero3_params: list[torch.nn.Parameter] | None = None,
     c_grad_chunk_size: int = 0,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """
     :param impl: The linear cross entropy implementation to use. Currently supports cce, torch_compile, and cce_exact.
+    :param e2: Optional second embedding, shape (..., D2). With ``c2`` it adds ``e2 @ c2.T`` to the
+        logits without materialising a wider classifier, e.g. ``(scaling * A(e), B)`` for a LoRA head.
+    :param c2: Optional second classifier, shape (NumClasses, D2). Required with ``e2``.
     """
 
+    if (e2 is None) != (c2 is None):
+        raise ValueError("e2 and c2 must be given together.")
+    if e2 is not None:
+        assert c2 is not None
+        if e2.size()[:-1] != e.size()[:-1] or e2.size(-1) != c2.size(1) or c2.size(0) != c.size(0):
+            raise ValueError(
+                f"e2 {tuple(e2.shape)} / c2 {tuple(c2.shape)} do not match "
+                f"e {tuple(e.shape)} / c {tuple(c.shape)}."
+            )
+
     if is_torch_greater_or_equal_2_5():
-        maybe_tensor_inputs = dict(e=e, c=c, targets=targets, bias=bias)
+        maybe_tensor_inputs = dict(e=e, c=c, targets=targets, bias=bias, e2=e2, c2=c2)
         for k, v in maybe_tensor_inputs.items():
             if isinstance(v, torch.distributed.tensor.DTensor):
                 raise ValueError(is_d_tensor_error_message.format(name=k))
@@ -113,6 +128,8 @@ def linear_cross_entropy(
             vocab_parallel_options=vocab_parallel_options,
             zero3_params=zero3_params,
             c_grad_chunk_size=c_grad_chunk_size,
+            e2=e2,
+            c2=c2,
         )
     elif impl == "torch_compile":
         if c_grad_chunk_size != 0:
@@ -127,6 +144,8 @@ def linear_cross_entropy(
             reduction,
             shift,
             vocab_parallel_options=vocab_parallel_options,
+            e2=e2,
+            c2=c2,
         )
     else:
         raise NotImplementedError(f"{impl} is not implemented.")

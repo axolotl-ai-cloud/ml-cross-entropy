@@ -313,7 +313,7 @@ def estimate_matmul_time(
             f"{BLOCK_B=}, {BLOCK_V=}, {BLOCK_D=}, {num_warps=}, {num_stages=}, "
             f"Total time: {total_time_ms}ms, compute time: {compute_ms}ms, "
             f"loading time: {load_ms}ms, store time: {store_ms}ms, "
-            f"Activate CTAs: {active_cta_ratio*100}%"
+            f"Activate CTAs: {active_cta_ratio * 100}%"
         )
     return total_time_ms
 
@@ -465,7 +465,7 @@ def cce_forward_autotune() -> Callable[..., autotuner.Autotuner | autotuner.Heur
     if _AUTOTUNE:
         return _cce_autotune(
             configs=get_autotune_config(),
-            key=["V", "D", "B_BIN"],
+            key=["V", "D", "D2", "B_BIN"],
             prune_configs_by={
                 "early_config_prune": early_config_prune,
                 "perf_model": estimate_matmul_time,
@@ -494,7 +494,7 @@ def cce_backward_autotune() -> Callable[..., autotuner.Autotuner | autotuner.Heu
     if _AUTOTUNE:
         return _cce_autotune(
             configs=get_autotune_config(),
-            key=["V", "D", "B_BIN"],
+            key=["V", "D", "D2", "B_BIN"],
             prune_configs_by={
                 "early_config_prune": functools.partial(
                     early_config_prune, shared_memory_factor=2.0
@@ -506,7 +506,7 @@ def cce_backward_autotune() -> Callable[..., autotuner.Autotuner | autotuner.Heu
                 ),
                 "top_k": 5,
             },
-            reset_to_zero=["dE", "dC", "dEC", "dCC", "dBias"],
+            reset_to_zero=["dE", "dC", "dEC", "dCC", "dBias", "dE2", "dC2", "dE2C", "dC2C"],
         )
     else:
         return _heuristics_from_config(_cce_backward_best_config())

@@ -55,8 +55,13 @@ def _vp_torch_compile_correct_logit_lse(
     stop: int,
     vocab_parallel_bias: torch.Tensor | None = None,
     softcap: float | None = None,
+    e2: torch.Tensor | None = None,
+    vocab_parallel_c2: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     vp_logits = e @ vocab_parallel_c.T
+    if e2 is not None:
+        assert vocab_parallel_c2 is not None
+        vp_logits = vp_logits + e2 @ vocab_parallel_c2.T
 
     if vocab_parallel_bias is not None:
         vp_logits = vp_logits + vocab_parallel_bias
@@ -86,10 +91,14 @@ def vocab_parallel_torch_compile_lce_apply(
     vocab_parallel_bias: torch.Tensor | None,
     softcap: float | None,
     reduction: str,
+    e2: torch.Tensor | None = None,
+    c2: torch.Tensor | None = None,
 ) -> torch.Tensor:
     pg = vocab_parallel_options.group
 
     e = vp_reduce_e_grad_hook(e, vocab_parallel_options)
+    if e2 is not None:
+        e2 = vp_reduce_e_grad_hook(e2, vocab_parallel_options)
 
     vp_correct_logit, vp_lse = _vp_torch_compile_correct_logit_lse(
         e,
@@ -99,6 +108,8 @@ def vocab_parallel_torch_compile_lce_apply(
         vocab_parallel_options.stop,
         vocab_parallel_bias=vocab_parallel_bias,
         softcap=softcap,
+        e2=e2,
+        vocab_parallel_c2=c2,
     )
 
     loss = _vp_loss_fn(vp_correct_logit, vp_lse, pg)
