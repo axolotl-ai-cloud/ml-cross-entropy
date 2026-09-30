@@ -16,6 +16,7 @@ PATCH_FNS = {
     "afmoe": ("cut_cross_entropy.transformers.afmoe", "patch_afmoe"),
     "apertus": ("cut_cross_entropy.transformers.apertus", "patch_apertus"),
     "arcee": ("cut_cross_entropy.transformers.arcee", "patch_arcee"),
+    "beam": ("cut_cross_entropy.transformers.beam", "patch_beam"),
     "cohere": ("cut_cross_entropy.transformers.cohere", "patch_cohere"),
     "cohere2": ("cut_cross_entropy.transformers.cohere", "patch_cohere2"),
     "cohere2_moe": ("cut_cross_entropy.transformers.cohere2_moe", "patch_cohere2_moe"),
