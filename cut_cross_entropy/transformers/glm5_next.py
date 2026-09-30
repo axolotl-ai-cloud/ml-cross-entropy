@@ -1,4 +1,4 @@
-"""Glm5Next (GLM-5.3-Flash) multimodal CCE patch. Adapted from transformers 5.16."""
+"""Glm5Next CCE patch. Adapted from transformers 5.17."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -149,9 +149,9 @@ def patch_glm5_next(
     from transformers.models.glm5_next import modeling_glm5_next
 
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(
-            maybe_model, modeling_glm5_next.Glm5NextForConditionalGeneration
-        ), f"Expected a Glm5NextForConditionalGeneration model. Got {type(maybe_model)}."
+        assert isinstance(maybe_model, modeling_glm5_next.Glm5NextForConditionalGeneration), (
+            f"Expected a Glm5NextForConditionalGeneration model. Got {type(maybe_model)}."
+        )
         maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
         return maybe_model
 
