@@ -49,6 +49,7 @@ PATCH_FNS = {
     "glm4_moe": ("cut_cross_entropy.transformers.glm4", "patch_glm4_moe"),
     "glm4_moe_lite": ("cut_cross_entropy.transformers.glm4_moe_lite", "patch_glm4_moe_lite"),
     "glm_moe_dsa": ("cut_cross_entropy.transformers.glm_moe_dsa", "patch_glm_moe_dsa"),
+    "glm5_next": ("cut_cross_entropy.transformers.glm5_next", "patch_glm5_next"),
     "glm46v": ("cut_cross_entropy.transformers.glm46v", "patch_glm46v"),
     "glm4v": ("cut_cross_entropy.transformers.glm4v", "patch_glm4v"),
     "glm_image": ("cut_cross_entropy.transformers.glm_image", "patch_glm_image"),
