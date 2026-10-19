@@ -64,6 +64,7 @@ def cce_forward(
         position_ids=position_ids,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
+        output_router_logits=output_router_logits,
         **kwargs,
     )
 
