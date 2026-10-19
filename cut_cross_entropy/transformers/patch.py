@@ -72,6 +72,7 @@ PATCH_FNS = {
     "llava": ("cut_cross_entropy.transformers.llava", "patch_llava"),
     "llama4_text": ("cut_cross_entropy.transformers.llama4", "patch_llama4_text"),
     "minimax": ("cut_cross_entropy.transformers.minimax", "patch_minimax"),
+    "mimo_v2": ("cut_cross_entropy.transformers.mimo_v2", "patch_mimo_v2"),
     "minimax_m2": ("cut_cross_entropy.transformers.minimax_m2", "patch_minimax_m2"),
     "ministral": ("cut_cross_entropy.transformers.ministral3", "patch_ministral"),
     "ministral3": ("cut_cross_entropy.transformers.ministral3", "patch_ministral3"),
