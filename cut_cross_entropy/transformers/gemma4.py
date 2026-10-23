@@ -1,4 +1,4 @@
-"""Gemma4 (text and multimodal) CCE patch. Adapted from transformers 5.17."""
+"""Gemma4 (text and multimodal) CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Optional, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.gemma4.modeling_gemma4 import (
     Gemma4CausalLMOutputWithPast,
 )
@@ -128,6 +129,7 @@ def cce_forward_multimodal(
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     per_layer_inputs: Optional[torch.Tensor] = None,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **lm_kwargs,
 ) -> Gemma4CausalLMOutputWithPast:
     # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
@@ -149,6 +151,7 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         image_position_ids=image_position_ids,
         video_position_ids=video_position_ids,
+        mm_encoder_outputs=mm_encoder_outputs,
         return_dict=True,
         **lm_kwargs,
     )
