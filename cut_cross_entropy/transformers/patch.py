@@ -88,6 +88,7 @@ PATCH_FNS = {
     "olmo2": ("cut_cross_entropy.transformers.olmo3", "patch_olmo2"),
     "olmo3": ("cut_cross_entropy.transformers.olmo3", "patch_olmo3"),
     "olmoe": ("cut_cross_entropy.transformers.olmoe", "patch_olmoe"),
+    "paligemma": ("cut_cross_entropy.transformers.paligemma", "patch_paligemma"),
     "phi": ("cut_cross_entropy.transformers.phi", "patch_phi"),
     "phi3": ("cut_cross_entropy.transformers.phi3", "patch_phi3"),
     "phi4_multimodal": ("cut_cross_entropy.transformers.phi4_multimodal", "patch_phi4_multimodal"),
