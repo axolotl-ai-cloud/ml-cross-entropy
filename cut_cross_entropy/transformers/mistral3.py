@@ -22,6 +22,7 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.mistral3.modeling_mistral3 import (
     Mistral3CausalLMOutputWithPast,
 )
@@ -48,6 +49,7 @@ def cce_forward_multimodal(
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     image_sizes: Optional[torch.Tensor] = None,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ) -> Union[Tuple, Mistral3CausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -62,6 +64,7 @@ def cce_forward_multimodal(
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         image_sizes=image_sizes,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

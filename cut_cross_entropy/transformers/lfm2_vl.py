@@ -22,6 +22,7 @@ from typing import Optional, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.lfm2_vl.modeling_lfm2_vl import Lfm2VlCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
@@ -47,6 +48,7 @@ def cce_forward_multimodal(
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ):
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -62,6 +64,7 @@ def cce_forward_multimodal(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

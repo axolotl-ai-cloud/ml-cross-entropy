@@ -25,7 +25,11 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    BaseModelOutputWithPooling,
+    CausalLMOutputWithPast,
+)
 from transformers.models.gemma3.modeling_gemma3 import (
     Gemma3CausalLMOutputWithPast,
     Gemma3ModelOutputWithPast,
@@ -117,6 +121,7 @@ def cce_forward_multimodal(
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **lm_kwargs,
 ) -> Union[Tuple, Gemma3CausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
@@ -132,6 +137,7 @@ def cce_forward_multimodal(
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         labels=labels,
+        mm_encoder_outputs=mm_encoder_outputs,
         return_dict=True,
         **lm_kwargs,
     )
