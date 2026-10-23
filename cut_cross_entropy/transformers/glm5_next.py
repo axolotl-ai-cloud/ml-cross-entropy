@@ -22,7 +22,7 @@ from typing import Optional, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
-from transformers.modeling_outputs import MoeCausalLMOutputWithPast
+from transformers.modeling_outputs import BaseModelOutputWithPooling, MoeCausalLMOutputWithPast
 from transformers.models.glm5_next.modeling_glm5_next import load_balancing_loss_func
 
 from cut_cross_entropy.transformers.utils import (
@@ -51,6 +51,7 @@ def cce_forward_multimodal(
     output_router_logits: Optional[bool] = None,
     mm_token_type_ids: Optional[torch.IntTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ) -> Union[tuple, MoeCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -74,6 +75,7 @@ def cce_forward_multimodal(
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         output_router_logits=output_router_logits,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 
