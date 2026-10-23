@@ -1,4 +1,4 @@
-"""Llama4 CCE patch. Adapted from transformers 5.17."""
+"""Llama4 CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,7 +22,7 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
-from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.modeling_outputs import BaseModelOutputWithPooling, CausalLMOutputWithPast
 from transformers.models.llama4.modeling_llama4 import (
     Llama4CausalLMOutputWithPast,
 )
@@ -118,6 +118,7 @@ def cce_forward_multimodal(
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ) -> Union[Tuple, Llama4CausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
@@ -132,11 +133,6 @@ def cce_forward_multimodal(
         else self.config.output_hidden_states
     )
     return_dict = return_dict if return_dict is not None else self.config.return_dict
-    vision_feature_select_strategy = (
-        vision_feature_select_strategy
-        if vision_feature_select_strategy is not None
-        else self.config.vision_config.vision_feature_select_strategy
-    )
 
     if (input_ids is None) ^ (inputs_embeds is not None):
         raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -146,16 +142,22 @@ def cce_forward_multimodal(
             "You cannot specify both pixel_values and inputs_embeds at the same time, and must specify either one"
         )
 
+    if pixel_values is not None and mm_encoder_outputs is not None:
+        raise ValueError(
+            "You cannot specify both pixel_values and mm_encoder_outputs at the same time"
+        )
+
     if inputs_embeds is None:
         inputs_embeds = self.get_input_embeddings()(input_ids)
 
-    if pixel_values is not None:
-        image_features = self.get_image_features(
-            pixel_values=pixel_values,
-            vision_feature_select_strategy=vision_feature_select_strategy,
-            return_dict=True,
-        ).last_hidden_state
+    mm_encoder_outputs = mm_encoder_outputs if mm_encoder_outputs is not None else {}
+    if mm_encoder_outputs.get("image") is None and pixel_values is not None:
+        mm_encoder_outputs["image"] = self.get_image_features(
+            pixel_values=pixel_values, return_dict=True
+        )
 
+    if mm_encoder_outputs.get("image") is not None:
+        image_features = mm_encoder_outputs["image"].last_hidden_state
         vision_flat = image_features.view(-1, image_features.size(-1))
         projected_vision_flat = self.multi_modal_projector(vision_flat).to(
             inputs_embeds.device, inputs_embeds.dtype
@@ -210,7 +212,7 @@ def cce_forward_multimodal(
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=image_features if pixel_values is not None else None,
+        image_hidden_states=image_features if mm_encoder_outputs.get("image") is not None else None,
     )
     return output if return_dict else output.to_tuple()
 
