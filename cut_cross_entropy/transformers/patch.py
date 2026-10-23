@@ -1,6 +1,7 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 import importlib
 import inspect
+import warnings
 from typing import overload
 
 from transformers import PretrainedConfig, PreTrainedModel
@@ -234,6 +235,17 @@ def cce_patch(
     # Check if patch_fn supports remote_model_id parameter
     sig = inspect.signature(patch_fn)
     if "remote_model_id" in sig.parameters:
-        return patch_fn(model_type_or_model, patch_options, remote_model_id)
+        if remote_model_id is None:
+            return patch_fn(model_type_or_model, patch_options, None)
+        try:
+            return patch_fn(model_type_or_model, patch_options, remote_model_id)
+        except ImportError as e:
+            # Remote code can lag behind transformers (removed APIs, missing deps); don't let it
+            # block patching the native class.
+            warnings.warn(
+                f"Could not load the remote code for {remote_model_id} ({e}). "
+                f"Patching the native transformers {model_type} class instead."
+            )
+            return patch_fn(model_type_or_model, patch_options, None)
     else:
         return patch_fn(model_type_or_model, patch_options)
