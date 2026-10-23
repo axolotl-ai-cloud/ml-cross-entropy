@@ -173,7 +173,7 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
             grad_scale = 1.0
         elif reduction == "none":
             grad_scale = 1.0
-            grad_out = grad_out.view(-1)
+            grad_out = grad_out.reshape(-1)
         else:
             raise ValueError(f"Unknown reduction {reduction}")
 
