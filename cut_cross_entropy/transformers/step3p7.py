@@ -18,7 +18,7 @@
 
 import sys
 from types import MethodType
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 import transformers
@@ -29,7 +29,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
-    patch_remote_model_class,
+    load_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -196,6 +196,16 @@ def cce_forward_step3p7(
     )
 
 
+def _select_forward(model_class: type) -> Callable:
+    """Pick the CCE forward for a native or remote-code Step3p7ForConditionalGeneration class."""
+    # A checkpoint without auto_map resolves to the native class even with a remote_model_id.
+    if model_class.__module__.startswith("transformers.models.step3p7"):
+        return cce_forward_step3p7
+    if model_class.forward is not cce_forward_step3p7_remote:
+        check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
+    return cce_forward_step3p7_remote
+
+
 def patch_step3p7(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
@@ -207,12 +217,8 @@ def patch_step3p7(
 
     # Handle remote model patching
     if remote_model_id is not None:
-        patch_remote_model_class(
-            remote_model_id=remote_model_id,
-            class_name="Step3p7ForConditionalGeneration",
-            patch_fn=cce_forward_step3p7_remote,
-            expected_forward_sha256=_REMOTE_FORWARD_SHA256,
-        )
+        model_class = load_remote_model_class(remote_model_id, "Step3p7ForConditionalGeneration")
+        model_class.forward = _select_forward(model_class)
         return None
 
     # Handle already instantiated model
@@ -222,13 +228,7 @@ def patch_step3p7(
             raise ValueError(
                 f"Expected Step3p7ForConditionalGeneration, got {model_class.__name__}"
             )
-        # The core transformers class and the remote-code class have different forwards.
-        if model_class.__module__.startswith("transformers.models.step3p7"):
-            maybe_model.forward = MethodType(cce_forward_step3p7, maybe_model)
-        else:
-            if model_class.forward is not cce_forward_step3p7_remote:
-                check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
-            maybe_model.forward = MethodType(cce_forward_step3p7_remote, maybe_model)
+        maybe_model.forward = MethodType(_select_forward(model_class), maybe_model)
         return maybe_model
 
     # Try to import and patch the class directly from transformers

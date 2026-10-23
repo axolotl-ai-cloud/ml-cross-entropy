@@ -17,7 +17,7 @@
 # limitations under the License.
 
 from types import MethodType
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import transformers
@@ -29,7 +29,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
-    patch_remote_model_class,
+    load_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -169,6 +169,16 @@ def cce_forward_kimi(
     )
 
 
+def _select_forward(model_class: type) -> Callable:
+    """Pick the CCE forward for a native or remote-code KimiLinearForCausalLM class."""
+    # A checkpoint without auto_map resolves to the native class even with a remote_model_id.
+    if model_class.__module__.startswith("transformers.models.kimi_linear"):
+        return cce_forward_kimi
+    if model_class.forward is not cce_forward_kimi_remote:
+        check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
+    return cce_forward_kimi_remote
+
+
 def patch_kimi_linear(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
@@ -180,12 +190,8 @@ def patch_kimi_linear(
 
     # Handle remote model patching
     if remote_model_id is not None:
-        patch_remote_model_class(
-            remote_model_id=remote_model_id,
-            class_name="KimiLinearForCausalLM",
-            patch_fn=cce_forward_kimi_remote,
-            expected_forward_sha256=_REMOTE_FORWARD_SHA256,
-        )
+        model_class = load_remote_model_class(remote_model_id, "KimiLinearForCausalLM")
+        model_class.forward = _select_forward(model_class)
         return None
 
     # Handle already instantiated model
@@ -193,13 +199,7 @@ def patch_kimi_linear(
         model_class = type(maybe_model)
         if model_class.__name__ != "KimiLinearForCausalLM":
             raise ValueError(f"Expected KimiLinearForCausalLM, got {model_class.__name__}")
-        # The core transformers class and the remote-code class have different forwards.
-        if model_class.__module__.startswith("transformers.models.kimi_linear"):
-            maybe_model.forward = MethodType(cce_forward_kimi, maybe_model)
-        else:
-            if model_class.forward is not cce_forward_kimi_remote:
-                check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
-            maybe_model.forward = MethodType(cce_forward_kimi_remote, maybe_model)
+        maybe_model.forward = MethodType(_select_forward(model_class), maybe_model)
         return maybe_model
 
     # Try to import and patch the class directly from transformers

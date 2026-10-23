@@ -17,7 +17,7 @@
 # limitations under the License.
 
 from types import MethodType
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 import transformers
@@ -28,7 +28,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
-    patch_remote_model_class,
+    load_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -167,6 +167,16 @@ def cce_forward_afmoe(
     )
 
 
+def _select_forward(model_class: type) -> Callable:
+    """Pick the CCE forward for a native or remote-code AfmoeForCausalLM class."""
+    # A checkpoint without auto_map resolves to the native class even with a remote_model_id.
+    if model_class.__module__.startswith("transformers.models.afmoe"):
+        return cce_forward_afmoe
+    if model_class.forward is not cce_forward_afmoe_remote:
+        check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
+    return cce_forward_afmoe_remote
+
+
 def patch_afmoe(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
@@ -178,12 +188,8 @@ def patch_afmoe(
 
     # Handle remote model patching
     if remote_model_id is not None:
-        patch_remote_model_class(
-            remote_model_id=remote_model_id,
-            class_name="AfmoeForCausalLM",
-            patch_fn=cce_forward_afmoe_remote,
-            expected_forward_sha256=_REMOTE_FORWARD_SHA256,
-        )
+        model_class = load_remote_model_class(remote_model_id, "AfmoeForCausalLM")
+        model_class.forward = _select_forward(model_class)
         return None
 
     # Handle already instantiated model
@@ -191,13 +197,7 @@ def patch_afmoe(
         model_class = type(maybe_model)
         if model_class.__name__ != "AfmoeForCausalLM":
             raise ValueError(f"Expected AfmoeForCausalLM, got {model_class.__name__}")
-        # The core transformers class and the remote-code class have different forwards.
-        if model_class.__module__.startswith("transformers.models.afmoe"):
-            maybe_model.forward = MethodType(cce_forward_afmoe, maybe_model)
-        else:
-            if model_class.forward is not cce_forward_afmoe_remote:
-                check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
-            maybe_model.forward = MethodType(cce_forward_afmoe_remote, maybe_model)
+        maybe_model.forward = MethodType(_select_forward(model_class), maybe_model)
         return maybe_model
 
     # Try to import and patch the class directly from transformers
