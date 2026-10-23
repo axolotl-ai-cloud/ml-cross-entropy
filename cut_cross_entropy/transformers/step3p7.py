@@ -1,4 +1,4 @@
-"""Step3p7 CCE patch. Adapted from transformers 5.20.1."""
+"""Step3p7 CCE patch. Adapted from transformers 5.20.1 and stepfun-ai/Step-3.7-Flash revision 5f62440 (remote code)."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,19 +16,109 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 from types import MethodType
 from typing import Optional, Union
 
 import torch
 import transformers
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce_lm_head,
+    check_remote_forward_fingerprint,
+    patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
+
+# sha256 of the remote-code Step3p7ForConditionalGeneration.forward source at revision 5f62440.
+_REMOTE_FORWARD_SHA256 = "642fc6847484a5ba6a5833bcfabc472b11e17258e3f2554bf2e58276469e4e28"
+
+
+def cce_forward_step3p7_remote(
+    self,
+    input_ids: torch.LongTensor = None,
+    pixel_values: Optional[torch.Tensor] = None,
+    num_patches=None,
+    patch_pixel_values=None,
+    patch_newline_mask=None,
+    image_embeds: Optional[torch.FloatTensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values=None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    output_attentions: Optional[bool] = None,
+    output_hidden_states: Optional[bool] = None,
+    return_dict: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
+    **kwargs,
+) -> Union[tuple, CausalLMOutputWithPast]:
+    output_attentions = (
+        output_attentions if output_attentions is not None else self.config.output_attentions
+    )
+    output_hidden_states = (
+        output_hidden_states
+        if output_hidden_states is not None
+        else self.config.output_hidden_states
+    )
+
+    # Mirrors upstream: `pixel_values` / `image_embeds` are named params here and are not
+    # forwarded, so Step3p7Model._parse_and_validate_image_input bails early and images are
+    # dropped (patch_pixel_values alone does not gate it). Kept as-is rather than diverging.
+    outputs = self.model(
+        input_ids=input_ids,
+        num_patches=num_patches,
+        patch_pixel_values=patch_pixel_values,
+        patch_newline_mask=patch_newline_mask,
+        position_ids=position_ids,
+        attention_mask=attention_mask,
+        past_key_values=past_key_values,
+        inputs_embeds=inputs_embeds,
+        use_cache=use_cache,
+        output_attentions=output_attentions,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        cache_position=cache_position,
+        **kwargs,
+    )
+    hidden_states = outputs.last_hidden_state
+
+    loss = None
+    logits = None
+
+    if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
+        assert labels is not None
+
+        loss = apply_lce_lm_head(
+            hidden_states,
+            self.lm_head,
+            labels,
+            _PATCH_OPTS,
+            **kwargs,
+        )
+    else:
+        logits = self.lm_head(hidden_states)
+
+        if labels is not None:
+            loss = self.loss_function(logits, labels, self.config.text_config.vocab_size, **kwargs)
+
+    output_cls = getattr(
+        sys.modules.get(type(self).__module__),
+        "Step3p7CausalLMOutputWithPast",
+        CausalLMOutputWithPast,
+    )
+    return output_cls(
+        loss=loss,
+        logits=logits,
+        past_key_values=outputs.past_key_values,
+        hidden_states=outputs.hidden_states,
+        attentions=outputs.attentions,
+    )
 
 
 def cce_forward_step3p7(
@@ -109,19 +199,47 @@ def cce_forward_step3p7(
 def patch_step3p7(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
+    remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
     """Patch Step3p7 for CCE."""
     global _PATCH_OPTS
     _PATCH_OPTS = patch_options
 
-    from transformers.models.step3p7 import modeling_step3p7
-
-    if isinstance(maybe_model, transformers.PreTrainedModel):
-        assert isinstance(maybe_model, modeling_step3p7.Step3p7ForConditionalGeneration), (
-            f"Expected a Step3p7ForConditionalGeneration model. Got {type(maybe_model)}."
+    # Handle remote model patching
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Step3p7ForConditionalGeneration",
+            patch_fn=cce_forward_step3p7_remote,
+            expected_forward_sha256=_REMOTE_FORWARD_SHA256,
         )
-        maybe_model.forward = MethodType(cce_forward_step3p7, maybe_model)
+        return None
+
+    # Handle already instantiated model
+    if isinstance(maybe_model, transformers.PreTrainedModel):
+        model_class = type(maybe_model)
+        if model_class.__name__ != "Step3p7ForConditionalGeneration":
+            raise ValueError(
+                f"Expected Step3p7ForConditionalGeneration, got {model_class.__name__}"
+            )
+        # The core transformers class and the remote-code class have different forwards.
+        if model_class.__module__.startswith("transformers.models.step3p7"):
+            maybe_model.forward = MethodType(cce_forward_step3p7, maybe_model)
+        else:
+            if model_class.forward is not cce_forward_step3p7_remote:
+                check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
+            maybe_model.forward = MethodType(cce_forward_step3p7_remote, maybe_model)
         return maybe_model
 
-    modeling_step3p7.Step3p7ForConditionalGeneration.forward = cce_forward_step3p7
+    # Try to import and patch the class directly from transformers
+    try:
+        from transformers.models.step3p7 import modeling_step3p7
+
+        modeling_step3p7.Step3p7ForConditionalGeneration.forward = cce_forward_step3p7
+    except ImportError:
+        raise ImportError(
+            "Could not find module to patch. Either ensure remote code is enabled "
+            "or check if transformers has the modeling code integrated for this model type"
+        )
+
     return None
