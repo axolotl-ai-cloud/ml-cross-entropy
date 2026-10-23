@@ -1,4 +1,4 @@
-"""Qwen4Exp (text and multimodal) CCE patch. CausalLM inherits Mixtral. Adapted from transformers 5.17."""
+"""Qwen4Exp (text and multimodal) CCE patch. CausalLM inherits Mixtral. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
