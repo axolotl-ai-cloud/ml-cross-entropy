@@ -22,7 +22,7 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
-from transformers.modeling_outputs import BaseModelOutputWithPooling, CausalLMOutputWithPast
+from transformers.modeling_outputs import BaseModelOutputWithPooling, MoeCausalLMOutputWithPast
 from transformers.models.llama4.modeling_llama4 import (
     Llama4CausalLMOutputWithPast,
 )
@@ -49,7 +49,7 @@ def cce_forward(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     defer_logits_calculation: bool = False,
     **kwargs,
-) -> Union[Tuple, CausalLMOutputWithPast]:
+) -> Union[Tuple, MoeCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
@@ -94,12 +94,13 @@ def cce_forward(
                 **kwargs,
             )
 
-    return CausalLMOutputWithPast(
+    return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
+        router_logits=outputs.router_logits,
     )
 
 
@@ -213,6 +214,7 @@ def cce_forward_multimodal(
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         image_hidden_states=image_features if mm_encoder_outputs.get("image") is not None else None,
+        router_logits=outputs.router_logits,
     )
     return output if return_dict else output.to_tuple()
 
