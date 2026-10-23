@@ -32,6 +32,7 @@ PATCH_FNS = {
     "exaone4": ("cut_cross_entropy.transformers.exaone4", "patch_exaone4"),
     "exaone4_5": ("cut_cross_entropy.transformers.exaone4_5", "patch_exaone4_5"),
     "exaone_moe": ("cut_cross_entropy.transformers.exaone_moe", "patch_exaone_moe"),
+    "falcon_h1": ("cut_cross_entropy.transformers.falcon_h1", "patch_falcon_h1"),
     "gemma": ("cut_cross_entropy.transformers.gemma", "patch_gemma"),
     "gemma2": ("cut_cross_entropy.transformers.gemma3", "patch_gemma2"),
     "gemma3": ("cut_cross_entropy.transformers.gemma3", "patch_gemma3"),
