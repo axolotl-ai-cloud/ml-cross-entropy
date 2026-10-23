@@ -203,9 +203,12 @@ class LinearCrossEntropyFunction(torch.autograd.Function):
                 # After gathering, read the full weight/bias from the
                 # parameter objects since the saved tensor references
                 # point to the (now-stale) local shards.
-                c = params.zero3_params[0].data
+                # `.data` drops requires_grad, which the backward kernel uses to decide
+                # whether to compute dc/dbias, so carry it over from the saved tensors.
+                c = params.zero3_params[0].data.requires_grad_(c.requires_grad)
                 if len(params.zero3_params) > 1:
-                    bias = params.zero3_params[1].data
+                    assert bias is not None
+                    bias = params.zero3_params[1].data.requires_grad_(bias.requires_grad)
 
             de, dc, dbias, de2, dc2 = cce_backward_kernel(
                 do=grad_out,
