@@ -1,4 +1,4 @@
-"""NemotronH CCE patch. Adapted from transformers 5.17."""
+"""NemotronH CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,7 +21,7 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.modeling_outputs import MoeCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -44,7 +44,7 @@ def cce_forward_nemotron_h(
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     **kwargs,
-) -> Union[tuple, CausalLMOutputWithPast]:
+) -> Union[tuple, MoeCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
@@ -84,12 +84,13 @@ def cce_forward_nemotron_h(
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
 
-    return CausalLMOutputWithPast(
+    return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
+        router_logits=outputs.router_logits,
     )
 
 
