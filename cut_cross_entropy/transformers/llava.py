@@ -54,17 +54,6 @@ def cce_forward(
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
-    vision_feature_layer = (
-        vision_feature_layer
-        if vision_feature_layer is not None
-        else self.config.vision_feature_layer
-    )
-    vision_feature_select_strategy = (
-        vision_feature_select_strategy
-        if vision_feature_select_strategy is not None
-        else self.config.vision_feature_select_strategy
-    )
-
     outputs = self.model(
         input_ids=input_ids,
         pixel_values=pixel_values,
