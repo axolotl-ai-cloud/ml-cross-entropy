@@ -94,7 +94,8 @@ def cce_forward(
         past_key_values=outputs.past_key_values,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        router_logits=outputs.router_logits,
+        # Remote-code backbones (e.g. deepseek-ai/DeepSeek-V3) return outputs without router_logits.
+        router_logits=getattr(outputs, "router_logits", None),
     )
 
 
