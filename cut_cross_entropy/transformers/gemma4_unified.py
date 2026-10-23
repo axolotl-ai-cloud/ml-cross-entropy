@@ -138,7 +138,6 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         image_position_ids=image_position_ids,
         video_position_ids=video_position_ids,
-        num_frames_per_video=num_frames_per_video,
         return_dict=True,
         **lm_kwargs,
     )
