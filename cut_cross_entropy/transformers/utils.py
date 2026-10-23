@@ -1,4 +1,5 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
+import os
 from dataclasses import dataclass
 from typing import Callable, TypeVar
 
@@ -527,7 +528,9 @@ def patch_remote_model_class(
             transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
 
         # get_class_in_module can be patched downstream (for ex: in Axolotl).
-        model_class = get_class_in_module(class_name, module_name)
+        # get_class_in_module takes a file path relative to the HF modules cache, not a dotted name.
+        module_path = module_name.replace(".", os.sep) + ".py"
+        model_class = get_class_in_module(class_name, module_path)
 
     if expected_forward_sha256 is not None and model_class.forward is not patch_fn:
         check_remote_forward_fingerprint(model_class, expected_forward_sha256)
