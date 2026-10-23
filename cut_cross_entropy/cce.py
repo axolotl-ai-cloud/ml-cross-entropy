@@ -294,6 +294,7 @@ def cce_linear_cross_entropy(
     batch_shape = targets.size()
 
     e = e.contiguous()
+    c = c.contiguous()
     targets = targets.contiguous()
 
     shift = int(shift)
