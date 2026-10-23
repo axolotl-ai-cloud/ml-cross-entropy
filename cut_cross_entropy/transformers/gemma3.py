@@ -1,4 +1,4 @@
-"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 5.17."""
+"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,8 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Implementation originally adapted from https://github.com/apple/ml-cross-entropy/pull/29
-# and updated for transformers 4.52.4.
+# Implementation originally adapted from https://github.com/apple/ml-cross-entropy/pull/29.
 
 from types import MethodType
 from typing import Optional, Tuple, Union
