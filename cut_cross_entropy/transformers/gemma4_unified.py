@@ -111,6 +111,7 @@ def cce_forward_multimodal(
     position_ids: Optional[torch.LongTensor] = None,
     image_position_ids: Optional[torch.LongTensor] = None,
     video_position_ids: Optional[torch.LongTensor] = None,
+    num_frames_per_video: Optional[torch.LongTensor] = None,
     past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
     mm_token_type_ids: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -137,6 +138,7 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         image_position_ids=image_position_ids,
         video_position_ids=video_position_ids,
+        num_frames_per_video=num_frames_per_video,
         return_dict=True,
         **lm_kwargs,
     )
