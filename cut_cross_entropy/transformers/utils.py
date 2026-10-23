@@ -1,5 +1,4 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
-import os
 from dataclasses import dataclass
 from typing import Callable, TypeVar
 
@@ -502,23 +501,22 @@ def load_remote_model_class(remote_model_id: str, class_name: str) -> type:
     parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
     module_name = ".".join(parts)
 
-    try:
-        # Try import from installed transformer package first
-        model_class = getattr(importlib.import_module(module_name), class_name)
-    except (ImportError, AttributeError):
-        from transformers.dynamic_module_utils import get_class_in_module
+    if not module_name.startswith("transformers_modules."):
+        return getattr(importlib.import_module(module_name), class_name)
 
-        # trust_remote_code model: trigger the remote-code download into the HF
-        # modules cache, then resolve the class from there.
-        with init_empty_weights():
-            transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-        # get_class_in_module can be patched downstream (for ex: in Axolotl).
-        # get_class_in_module takes a file path relative to the HF modules cache, not a dotted name.
-        module_path = module_name.replace(".", os.sep) + ".py"
-        model_class = get_class_in_module(class_name, module_path)
-
-    return model_class
+    # Resolve like from_pretrained does, so the class we patch is the one it later returns.
+    auto_map = getattr(model_config, "auto_map", None) or {}
+    class_reference = next(
+        (
+            ref
+            for ref in auto_map.values()
+            if isinstance(ref, str) and ref.endswith(f".{class_name}")
+        ),
+        f"{parts[-1]}.{class_name}",
+    )
+    return get_class_from_dynamic_module(class_reference, remote_model_id)
 
 
 def patch_remote_model_class(
