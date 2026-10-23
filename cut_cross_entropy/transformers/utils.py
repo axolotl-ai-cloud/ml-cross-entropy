@@ -15,8 +15,6 @@ except ImportError:
         DTensor = None
         Shard = None
 
-from contextlib import contextmanager
-
 import torch.nn as nn
 
 from cut_cross_entropy import VocabParallelOptions, linear_cross_entropy
@@ -31,31 +29,6 @@ REMOTE_MODEL_NOT_IMPLEMENTED_ERROR = (
     "Please create an issue at https://github.com/axolotl-ai-cloud/axolotl/issues "
     "to request support for this model."
 )
-
-
-@contextmanager
-def init_empty_weights():
-    """
-    A context manager under which models are initialized with all parameters on the meta device,
-    therefore creating an empty model. Useful when just initializing the model would blow the available RAM.
-
-    This is a minimal implementation adapted from accelerate.init_empty_weights to avoid the accelerate dependency.
-    """
-    old_register_parameter = nn.Module.register_parameter
-
-    def register_empty_parameter(module, name, param):
-        old_register_parameter(module, name, param)
-        if param is not None:
-            param_cls = type(module._parameters[name])
-            kwargs = module._parameters[name].__dict__.copy()
-            kwargs["requires_grad"] = param.requires_grad
-            module._parameters[name] = param_cls(module._parameters[name].to("meta"), **kwargs)
-
-    try:
-        nn.Module.register_parameter = register_empty_parameter
-        yield
-    finally:
-        nn.Module.register_parameter = old_register_parameter
 
 
 class CCEKwargs(CCEPreset):
@@ -463,19 +436,33 @@ def apply_lce_lm_head(
     )
 
 
-def patch_remote_model_class(
-    remote_model_id: str,
-    class_name: str,
-    patch_fn: Callable,
-) -> None:
-    """
-    Load a model class and patch a specific class method.
+def check_remote_forward_fingerprint(model_class: type, expected_sha256: str) -> None:
+    """Warn if a remote-code class's forward differs from the source the CCE patch was adapted from."""
+    import hashlib
+    import inspect
+    import textwrap
+    import warnings
 
-    Args:
-        remote_model_id: The HuggingFace model ID to load remote code from
-        class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
-        patch_fn: Function to patch the class method (e.g., forward function)
-    """
+    try:
+        source = textwrap.dedent(inspect.getsource(model_class.forward))
+    except (OSError, TypeError):
+        warnings.warn(
+            f"Could not read the source of {model_class.__name__}.forward to verify the CCE patch."
+        )
+        return
+
+    actual_sha256 = hashlib.sha256(source.encode()).hexdigest()
+    if actual_sha256 != expected_sha256:
+        warnings.warn(
+            f"{model_class.__module__}.{model_class.__name__}.forward differs from the remote-code revision "
+            f"the CCE patch was adapted from (sha256 {actual_sha256[:12]} != {expected_sha256[:12]}). "
+            "The patch may be stale; please report it at "
+            "https://github.com/axolotl-ai-cloud/ml-cross-entropy/issues."
+        )
+
+
+def load_remote_model_class(remote_model_id: str, class_name: str) -> type:
+    """Load ``class_name`` from the (possibly remote-code) modeling module of ``remote_model_id``."""
     import importlib
 
     # Load the model configuration. For trust_remote_code models this also
@@ -487,19 +474,44 @@ def patch_remote_model_class(
     parts[-1] = parts[-1].replace("configuration_", "modeling_", 1)
     module_name = ".".join(parts)
 
-    try:
-        # Try import from installed transformer package first
-        model_class = getattr(importlib.import_module(module_name), class_name)
-    except (ImportError, AttributeError):
-        from transformers.dynamic_module_utils import get_class_in_module
+    if not module_name.startswith("transformers_modules."):
+        return getattr(importlib.import_module(module_name), class_name)
 
-        # trust_remote_code model: trigger the remote-code download into the HF
-        # modules cache, then resolve the class from there.
-        with init_empty_weights():
-            transformers.AutoModelForCausalLM.from_config(model_config, trust_remote_code=True)
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-        # get_class_in_module can be patched downstream (for ex: in Axolotl).
-        model_class = get_class_in_module(class_name, module_name)
+    # Resolve like from_pretrained does, so the class we patch is the one it later returns.
+    auto_map = getattr(model_config, "auto_map", None) or {}
+    class_reference = next(
+        (
+            ref
+            for ref in auto_map.values()
+            if isinstance(ref, str) and ref.endswith(f".{class_name}")
+        ),
+        f"{parts[-1]}.{class_name}",
+    )
+    return get_class_from_dynamic_module(class_reference, remote_model_id)
+
+
+def patch_remote_model_class(
+    remote_model_id: str,
+    class_name: str,
+    patch_fn: Callable,
+    expected_forward_sha256: str | None = None,
+) -> None:
+    """
+    Load a model class and patch a specific class method.
+
+    Args:
+        remote_model_id: The HuggingFace model ID to load remote code from
+        class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
+        patch_fn: Function to patch the class method (e.g., forward function)
+        expected_forward_sha256: Optional sha256 of the remote forward's source the patch was adapted
+            from; a warning is emitted if the loaded class's forward differs.
+    """
+    model_class = load_remote_model_class(remote_model_id, class_name)
+
+    if expected_forward_sha256 is not None and model_class.forward is not patch_fn:
+        check_remote_forward_fingerprint(model_class, expected_forward_sha256)
 
     # Patch the forward method.
     setattr(model_class, "forward", patch_fn)

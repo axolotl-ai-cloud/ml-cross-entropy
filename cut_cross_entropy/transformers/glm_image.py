@@ -1,4 +1,4 @@
-"""GLM-Image CCE patch. Adapted from transformers 5.17."""
+"""GLM-Image CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.glm_image.modeling_glm_image import (
     GlmImageCausalLMOutputWithPast,
 )
@@ -48,6 +49,7 @@ def cce_forward_multimodal(
     image_grid_thw: torch.LongTensor | None = None,
     images_per_sample: torch.LongTensor | None = None,
     logits_to_keep: int | torch.Tensor = 0,
+    mm_encoder_outputs: dict[str, BaseModelOutputWithPooling] | None = None,
     **kwargs,
 ) -> Union[tuple, GlmImageCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -62,6 +64,7 @@ def cce_forward_multimodal(
         attention_mask=attention_mask,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

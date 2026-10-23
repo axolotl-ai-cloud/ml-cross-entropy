@@ -1,4 +1,4 @@
-"""Afmoe CCE patch. Adapted from transformers 5.17."""
+"""Afmoe CCE patch. Adapted from transformers 5.20.1 and arcee-ai/Trinity-Nano-Preview revision b576b32 (remote code)."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -17,7 +17,7 @@
 # limitations under the License.
 
 from types import MethodType
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 import transformers
@@ -27,10 +27,75 @@ from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce_lm_head,
-    patch_remote_model_class,
+    check_remote_forward_fingerprint,
+    load_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
+
+# sha256 of the remote-code AfmoeForCausalLM.forward source at revision b576b32.
+_REMOTE_FORWARD_SHA256 = "06cf0ad12b54b040d4f03d38ec49916e8174c6e6bca5de65f3f5c31ae769b9ef"
+
+
+def cce_forward_afmoe_remote(
+    self,
+    input_ids: torch.LongTensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_values=None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    cache_position: Optional[torch.LongTensor] = None,
+    logits_to_keep: Union[int, torch.Tensor] = 0,
+    token_type_ids: Optional[torch.Tensor] = None,
+    **kwargs,
+) -> Union[tuple, MoeCausalLMOutputWithPast]:
+    outputs = self.model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=past_key_values,
+        inputs_embeds=inputs_embeds,
+        use_cache=use_cache,
+        cache_position=cache_position,
+        **kwargs,
+    )
+
+    hidden_states = outputs.last_hidden_state
+
+    loss = None
+    logits = None
+
+    # Only compute necessary logits
+    slice_indices = (
+        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+    )
+
+    if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
+        assert labels is not None
+
+        loss = apply_lce_lm_head(
+            hidden_states[:, slice_indices, :],
+            self.lm_head,
+            labels,
+            _PATCH_OPTS,
+            **kwargs,
+        )
+    else:
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
+
+        if labels is not None:
+            loss = self.loss_function(logits, labels, self.vocab_size, **kwargs)
+
+    return MoeCausalLMOutputWithPast(
+        loss=loss,
+        logits=logits,
+        past_key_values=outputs.past_key_values,
+        hidden_states=outputs.hidden_states,
+        attentions=outputs.attentions,
+        router_logits=outputs.router_logits,
+    )
 
 
 def cce_forward_afmoe(
@@ -102,6 +167,16 @@ def cce_forward_afmoe(
     )
 
 
+def _select_forward(model_class: type) -> Callable:
+    """Pick the CCE forward for a native or remote-code AfmoeForCausalLM class."""
+    # A checkpoint without auto_map resolves to the native class even with a remote_model_id.
+    if model_class.__module__.startswith("transformers.models.afmoe"):
+        return cce_forward_afmoe
+    if model_class.forward is not cce_forward_afmoe_remote:
+        check_remote_forward_fingerprint(model_class, _REMOTE_FORWARD_SHA256)
+    return cce_forward_afmoe_remote
+
+
 def patch_afmoe(
     maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
     patch_options: PatchOptions,
@@ -113,21 +188,17 @@ def patch_afmoe(
 
     # Handle remote model patching
     if remote_model_id is not None:
-        patch_remote_model_class(
-            remote_model_id=remote_model_id,
-            class_name="AfmoeForCausalLM",
-            patch_fn=cce_forward_afmoe,
-        )
+        model_class = load_remote_model_class(remote_model_id, "AfmoeForCausalLM")
+        model_class.forward = _select_forward(model_class)
         return None
 
     # Handle already instantiated model
     if isinstance(maybe_model, transformers.PreTrainedModel):
-        model_class_name = maybe_model.__class__.__name__
-        if model_class_name == "AfmoeForCausalLM":
-            maybe_model.forward = MethodType(cce_forward_afmoe, maybe_model)
-            return maybe_model
-        else:
-            raise ValueError(f"Expected AfmoeForCausalLM, got {model_class_name}")
+        model_class = type(maybe_model)
+        if model_class.__name__ != "AfmoeForCausalLM":
+            raise ValueError(f"Expected AfmoeForCausalLM, got {model_class.__name__}")
+        maybe_model.forward = MethodType(_select_forward(model_class), maybe_model)
+        return maybe_model
 
     # Try to import and patch the class directly from transformers
     try:

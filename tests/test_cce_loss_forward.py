@@ -46,11 +46,13 @@ def _loss(
 @pytest.mark.parametrize(
     "dtype,error_tol", [(torch.float32, 1e-5), (torch.float16, 1e-3), (torch.bfloat16, 1e-2)]
 )
-@pytest.mark.parametrize("softcap", [None, 20.0])
+@pytest.mark.parametrize("softcap", [None, 20.0, 1.0])
 @pytest.mark.parametrize("has_bias", [True, False])
 @pytest.mark.parametrize("shift", [0, 2])
 @pytest.mark.parametrize("invalids", [False, True])
-@pytest.mark.parametrize("shape", [(256, 512, 128), (252, 507, 128), (252, 507, 123)])
+@pytest.mark.parametrize(
+    "shape", [(256, 512, 128), (252, 507, 128), (252, 507, 123), (252, 507, 520)]
+)
 def test_loss_forward(
     impl: str,
     dtype: torch.dtype,

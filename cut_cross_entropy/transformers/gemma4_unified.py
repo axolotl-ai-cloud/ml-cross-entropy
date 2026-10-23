@@ -1,4 +1,4 @@
-"""Gemma4Unified (text and multimodal) CCE patch. Adapted from transformers 5.17."""
+"""Gemma4Unified (text and multimodal) CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Optional, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.gemma4_unified.modeling_gemma4_unified import (
     Gemma4UnifiedCausalLMOutputWithPast,
 )
@@ -111,12 +112,14 @@ def cce_forward_multimodal(
     position_ids: Optional[torch.LongTensor] = None,
     image_position_ids: Optional[torch.LongTensor] = None,
     video_position_ids: Optional[torch.LongTensor] = None,
+    num_frames_per_video: Optional[torch.LongTensor] = None,
     past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
     mm_token_type_ids: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **lm_kwargs,
 ) -> Gemma4UnifiedCausalLMOutputWithPast:
     # Strip PEFT-injected return_dict so it doesn't collide with the explicit return_dict=True below.
@@ -137,6 +140,7 @@ def cce_forward_multimodal(
         use_cache=use_cache,
         image_position_ids=image_position_ids,
         video_position_ids=video_position_ids,
+        mm_encoder_outputs=mm_encoder_outputs,
         return_dict=True,
         **lm_kwargs,
     )

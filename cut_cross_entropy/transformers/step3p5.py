@@ -28,10 +28,14 @@ from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     apply_lce_lm_head,
+    check_remote_forward_fingerprint,
     patch_remote_model_class,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
+
+# sha256 of the remote-code Step3p5ForCausalLM.forward source at revision ab446a3.
+_REMOTE_FORWARD_SHA256 = "b58051be1a6146a872b5cb2298f346ea7cfbb1a61b19b63ddbd7e8ff61f0db71"
 
 
 def cce_forward_step3p5(
@@ -127,6 +131,7 @@ def patch_step3p5(
             remote_model_id=remote_model_id,
             class_name="Step3p5ForCausalLM",
             patch_fn=cce_forward_step3p5,
+            expected_forward_sha256=_REMOTE_FORWARD_SHA256,
         )
         return None
 
@@ -134,6 +139,8 @@ def patch_step3p5(
     if isinstance(maybe_model, transformers.PreTrainedModel):
         model_class_name = maybe_model.__class__.__name__
         if model_class_name == "Step3p5ForCausalLM":
+            if type(maybe_model).forward is not cce_forward_step3p5:
+                check_remote_forward_fingerprint(type(maybe_model), _REMOTE_FORWARD_SHA256)
             maybe_model.forward = MethodType(cce_forward_step3p5, maybe_model)
             return maybe_model
         else:

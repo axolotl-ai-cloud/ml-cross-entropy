@@ -118,9 +118,9 @@ def _cce_lse_forward_kernel(
         bias = bias.to(dtype=accum.dtype)
         accum += bias[None, :]
 
-    logits = tl.where(offs_v[None, :] < V, accum, -float("inf"))
     if HAS_SOFTCAP:
-        logits = tl_softcapping(logits, softcap)
+        accum = tl_softcapping(accum, softcap)
+    logits = tl.where(offs_v[None, :] < V, accum, -float("inf"))
 
     if HAS_LA:
         this_avg_logit = tl.sum(logits, 0) / B

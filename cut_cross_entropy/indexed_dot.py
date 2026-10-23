@@ -76,7 +76,8 @@ def _indexed_neg_dot_forward_kernel(
     neg_dot = -tl.sum(dot, 1)
 
     if HAS_BIAS:
-        bias = tl.load(Bias + inds * stride_biasv, mask=inds < V, other=0.0)
+        # Every D chunk atomically adds into Out; add the bias in only one of them.
+        bias = tl.load(Bias + inds * stride_biasv, mask=(inds < V) & (pid_d == 0), other=0.0)
         bias = bias.to(tl.float32)
         neg_dot -= bias
 

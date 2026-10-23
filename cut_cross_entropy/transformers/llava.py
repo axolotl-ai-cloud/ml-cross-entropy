@@ -1,4 +1,4 @@
-"""Llava CCE patch. Adapted from transformers 5.17."""
+"""Llava CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Optional, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.llava.modeling_llava import LlavaCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
@@ -47,21 +48,11 @@ def cce_forward(
     labels: Optional[torch.LongTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     image_sizes: Optional[torch.Tensor] = None,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ):
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
-
-    vision_feature_layer = (
-        vision_feature_layer
-        if vision_feature_layer is not None
-        else self.config.vision_feature_layer
-    )
-    vision_feature_select_strategy = (
-        vision_feature_select_strategy
-        if vision_feature_select_strategy is not None
-        else self.config.vision_feature_select_strategy
-    )
 
     outputs = self.model(
         input_ids=input_ids,
@@ -73,6 +64,7 @@ def cce_forward(
         vision_feature_layer=vision_feature_layer,
         vision_feature_select_strategy=vision_feature_select_strategy,
         image_sizes=image_sizes,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

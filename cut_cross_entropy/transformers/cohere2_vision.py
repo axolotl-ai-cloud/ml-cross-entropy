@@ -1,4 +1,4 @@
-"""Cohere2 Vision CCE patch. Adapted from transformers 5.17."""
+"""Cohere2 Vision CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,6 +21,7 @@ from types import MethodType
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.cohere2_vision.modeling_cohere2_vision import (
     Cohere2VisionCausalLMOutputWithPast,
 )
@@ -47,6 +48,7 @@ def cce_forward_multimodal(
     use_cache: bool | None = None,
     logits_to_keep: int | torch.Tensor = 0,
     image_sizes: torch.Tensor | None = None,
+    mm_encoder_outputs: dict[str, BaseModelOutputWithPooling] | None = None,
     **kwargs,
 ) -> tuple | Cohere2VisionCausalLMOutputWithPast:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -61,6 +63,7 @@ def cce_forward_multimodal(
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         image_sizes=image_sizes,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

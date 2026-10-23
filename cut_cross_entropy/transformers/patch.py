@@ -1,6 +1,7 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 import importlib
 import inspect
+import warnings
 from typing import overload
 
 from transformers import PretrainedConfig, PreTrainedModel
@@ -81,12 +82,15 @@ PATCH_FNS = {
     "mistral4": ("cut_cross_entropy.transformers.mistral4", "patch_mistral4"),
     "mixtral": ("cut_cross_entropy.transformers.mixtral", "patch_mixtral"),
     "mllama": ("cut_cross_entropy.transformers.mllama", "patch_mllama"),
+    "mllama_text_model": ("cut_cross_entropy.transformers.mllama", "patch_mllama"),
     "muse_glimmer": ("cut_cross_entropy.transformers.muse_glimmer", "patch_muse_glimmer"),
+    "nemotron": ("cut_cross_entropy.transformers.nemotron", "patch_nemotron"),
     "nemotron_h": ("cut_cross_entropy.transformers.nemotron_h", "patch_nemotron_h"),
     "olmo": ("cut_cross_entropy.transformers.olmo3", "patch_olmo"),
     "olmo2": ("cut_cross_entropy.transformers.olmo3", "patch_olmo2"),
     "olmo3": ("cut_cross_entropy.transformers.olmo3", "patch_olmo3"),
     "olmoe": ("cut_cross_entropy.transformers.olmoe", "patch_olmoe"),
+    "paligemma": ("cut_cross_entropy.transformers.paligemma", "patch_paligemma"),
     "phi": ("cut_cross_entropy.transformers.phi", "patch_phi"),
     "phi3": ("cut_cross_entropy.transformers.phi3", "patch_phi3"),
     "phi4_multimodal": ("cut_cross_entropy.transformers.phi4_multimodal", "patch_phi4_multimodal"),
@@ -106,6 +110,7 @@ PATCH_FNS = {
     "qwen4_exp": ("cut_cross_entropy.transformers.qwen4_exp", "patch_qwen4_exp"),
     "qwen4_exp_text": ("cut_cross_entropy.transformers.qwen4_exp", "patch_qwen4_exp_text"),
     "smollm3": ("cut_cross_entropy.transformers.smollm3", "patch_smollm3"),
+    "smolvlm": ("cut_cross_entropy.transformers.smolvlm", "patch_smolvlm"),
     "seed_oss": ("cut_cross_entropy.transformers.seed_oss", "patch_seed_oss"),
     "step3p5": ("cut_cross_entropy.transformers.step3p5", "patch_step3p5"),
     "step3p7": ("cut_cross_entropy.transformers.step3p7", "patch_step3p7"),
@@ -231,6 +236,22 @@ def cce_patch(
     # Check if patch_fn supports remote_model_id parameter
     sig = inspect.signature(patch_fn)
     if "remote_model_id" in sig.parameters:
-        return patch_fn(model_type_or_model, patch_options, remote_model_id)
+        if remote_model_id is None:
+            return patch_fn(model_type_or_model, patch_options, None)
+        try:
+            return patch_fn(model_type_or_model, patch_options, remote_model_id)
+        except ImportError as remote_error:
+            # Remote code can lag behind transformers (removed APIs, missing deps); don't let it
+            # block patching the native class.
+            try:
+                result = patch_fn(model_type_or_model, patch_options, None)
+            except ImportError:
+                # No native class to fall back to.
+                raise remote_error
+            warnings.warn(
+                f"Could not load the remote code for {remote_model_id} ({remote_error!r}). "
+                f"Patched the native transformers {model_type} class instead."
+            )
+            return result
     else:
         return patch_fn(model_type_or_model, patch_options)

@@ -67,7 +67,7 @@ def _vp_torch_compile_correct_logit_lse(
         vp_logits = vp_logits + vocab_parallel_bias
 
     if softcap is not None:
-        vp_logits = softcapping(vp_logits, softcap)
+        vp_logits = softcapping(vp_logits.float(), softcap)
 
     vp_lse = torch.logsumexp(vp_logits.float(), -1)
 

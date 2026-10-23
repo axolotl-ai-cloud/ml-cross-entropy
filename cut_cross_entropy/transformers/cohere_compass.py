@@ -1,4 +1,4 @@
-"""CohereCompass CCE patch. Adapted from transformers 5.17."""
+"""CohereCompass CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,7 +21,11 @@ from types import MethodType
 import torch
 import transformers
 from transformers.cache_utils import Cache
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    BaseModelOutputWithPooling,
+    CausalLMOutputWithPast,
+)
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -112,6 +116,7 @@ def cce_forward_multimodal(
     mm_token_type_ids: torch.IntTensor | None = None,
     use_cache: bool | None = None,
     logits_to_keep: int | torch.Tensor = 0,
+    mm_encoder_outputs: dict[str, BaseModelOutputWithPooling] | None = None,
     **kwargs,
 ) -> CausalLMOutputWithPast:
     # Strip PEFT-injected return_dict so it can't leak into self.model.
@@ -129,6 +134,7 @@ def cce_forward_multimodal(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

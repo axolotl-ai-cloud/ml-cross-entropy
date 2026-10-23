@@ -1,4 +1,4 @@
-"""Qwen3_5 MoE CCE patch. Adapted from transformers 5.17."""
+"""Qwen3_5 MoE CCE patch. CausalLM inherits Qwen3Next (Mixtral), ConditionalGeneration inherits Qwen3VLMoe. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,15 +16,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from types import MethodType
 
 import transformers
+from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import Qwen3_5MoeCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
     TransformersModelT,
     patch_remote_model_class,
 )
+
+from . import qwen3_vl as qwen3_vl_patch
+
+
+# Same forward body as Qwen3VL's but a distinct output dataclass (same fields), so re-box.
+@functools.wraps(qwen3_vl_patch.cce_forward_multimodal_moe)
+def cce_forward_multimodal_moe(self, *args, **kwargs) -> Qwen3_5MoeCausalLMOutputWithPast:
+    return Qwen3_5MoeCausalLMOutputWithPast(
+        **qwen3_vl_patch.cce_forward_multimodal_moe(self, *args, **kwargs)
+    )
 
 
 def patch_qwen3_5_moe_text(
@@ -63,10 +75,7 @@ def patch_qwen3_5_moe(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    from . import qwen3_vl as qwen3_vl_patch
-
     qwen3_vl_patch._PATCH_OPTS = patch_options
-    cce_forward_multimodal_moe = qwen3_vl_patch.cce_forward_multimodal_moe
 
     if remote_model_id is not None:
         patch_remote_model_class(

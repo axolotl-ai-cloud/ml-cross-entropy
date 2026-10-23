@@ -1,4 +1,4 @@
-"""Qwen2.5 VL CCE patch. Adapted from transformers 5.17."""
+"""Qwen2.5 VL CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VLCausalLMOutputWithPast,
 )
@@ -52,6 +53,7 @@ def cce_forward_multimodal(
     mm_token_type_ids: Optional[torch.IntTensor] = None,
     second_per_grid_ts: Optional[torch.Tensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ) -> Union[Tuple, Qwen2_5_VLCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -70,6 +72,7 @@ def cce_forward_multimodal(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 

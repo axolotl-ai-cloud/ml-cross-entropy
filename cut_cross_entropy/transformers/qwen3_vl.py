@@ -1,4 +1,4 @@
-"""Qwen3 VL CCE patch. Adapted from transformers 5.17."""
+"""Qwen3 VL CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Optional, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLCausalLMOutputWithPast,
 )
@@ -54,6 +55,7 @@ def cce_forward_multimodal(
     video_grid_thw: Optional[torch.LongTensor] = None,
     mm_token_type_ids: Optional[torch.IntTensor] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ) -> Union[tuple, Qwen3VLCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
@@ -70,6 +72,7 @@ def cce_forward_multimodal(
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         mm_token_type_ids=mm_token_type_ids,
+        mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
     )
 
@@ -125,11 +128,19 @@ def cce_forward_multimodal_moe(
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
     mm_token_type_ids: Optional[torch.IntTensor] = None,
+    output_router_logits: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
 ):
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
+
+    output_router_logits = (
+        output_router_logits
+        if output_router_logits is not None
+        else self.config.text_config.output_router_logits
+    )
 
     outputs = self.model(
         input_ids=input_ids,
@@ -142,6 +153,8 @@ def cce_forward_multimodal_moe(
         attention_mask=attention_mask,
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
+        mm_encoder_outputs=mm_encoder_outputs,
+        output_router_logits=output_router_logits,
         **kwargs,
     )
 
@@ -175,7 +188,7 @@ def cce_forward_multimodal_moe(
             )
 
     aux_loss = None
-    if kwargs.get("output_router_logits", False):
+    if output_router_logits:
         aux_loss = load_balancing_loss_func(
             outputs.router_logits,
             self.config.text_config.num_experts,

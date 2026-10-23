@@ -1,4 +1,4 @@
-"""GLM MoE DSA (GLM-5) CCE patch. GlmMoeDsaForCausalLM -> DeepseekV32ForCausalLM -> Llama. Adapted from transformers 5.17."""
+"""GLM MoE DSA (GLM-5) CCE patch. GlmMoeDsa inherits DeepseekV32 (DeepseekV2). Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -32,12 +32,11 @@ def patch_glm_moe_dsa(
     patch_options: PatchOptions,
     remote_model_id: str | None = None,
 ) -> TransformersModelT | None:
-    # Set the _PATCH_OPTS in the llama patch file
-    from . import llama as llama_patch
+    from . import deepseek_v2 as deepseek_v2_patch
 
-    llama_patch._PATCH_OPTS = patch_options
+    deepseek_v2_patch._PATCH_OPTS = patch_options
 
-    cce_forward = llama_patch.cce_forward
+    cce_forward = deepseek_v2_patch.cce_forward
 
     if remote_model_id is not None:
         patch_remote_model_class(
