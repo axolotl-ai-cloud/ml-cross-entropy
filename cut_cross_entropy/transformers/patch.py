@@ -108,6 +108,7 @@ PATCH_FNS = {
     "qwen4_exp": ("cut_cross_entropy.transformers.qwen4_exp", "patch_qwen4_exp"),
     "qwen4_exp_text": ("cut_cross_entropy.transformers.qwen4_exp", "patch_qwen4_exp_text"),
     "smollm3": ("cut_cross_entropy.transformers.smollm3", "patch_smollm3"),
+    "smolvlm": ("cut_cross_entropy.transformers.smolvlm", "patch_smolvlm"),
     "seed_oss": ("cut_cross_entropy.transformers.seed_oss", "patch_seed_oss"),
     "step3p5": ("cut_cross_entropy.transformers.step3p5", "patch_step3p5"),
     "step3p7": ("cut_cross_entropy.transformers.step3p7", "patch_step3p7"),
