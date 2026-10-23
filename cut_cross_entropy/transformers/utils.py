@@ -489,22 +489,8 @@ def check_remote_forward_fingerprint(model_class: type, expected_sha256: str) ->
         )
 
 
-def patch_remote_model_class(
-    remote_model_id: str,
-    class_name: str,
-    patch_fn: Callable,
-    expected_forward_sha256: str | None = None,
-) -> None:
-    """
-    Load a model class and patch a specific class method.
-
-    Args:
-        remote_model_id: The HuggingFace model ID to load remote code from
-        class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
-        patch_fn: Function to patch the class method (e.g., forward function)
-        expected_forward_sha256: Optional sha256 of the remote forward's source the patch was adapted
-            from; a warning is emitted if the loaded class's forward differs.
-    """
+def load_remote_model_class(remote_model_id: str, class_name: str) -> type:
+    """Load ``class_name`` from the (possibly remote-code) modeling module of ``remote_model_id``."""
     import importlib
 
     # Load the model configuration. For trust_remote_code models this also
@@ -531,6 +517,27 @@ def patch_remote_model_class(
         # get_class_in_module takes a file path relative to the HF modules cache, not a dotted name.
         module_path = module_name.replace(".", os.sep) + ".py"
         model_class = get_class_in_module(class_name, module_path)
+
+    return model_class
+
+
+def patch_remote_model_class(
+    remote_model_id: str,
+    class_name: str,
+    patch_fn: Callable,
+    expected_forward_sha256: str | None = None,
+) -> None:
+    """
+    Load a model class and patch a specific class method.
+
+    Args:
+        remote_model_id: The HuggingFace model ID to load remote code from
+        class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
+        patch_fn: Function to patch the class method (e.g., forward function)
+        expected_forward_sha256: Optional sha256 of the remote forward's source the patch was adapted
+            from; a warning is emitted if the loaded class's forward differs.
+    """
+    model_class = load_remote_model_class(remote_model_id, class_name)
 
     if expected_forward_sha256 is not None and model_class.forward is not patch_fn:
         check_remote_forward_fingerprint(model_class, expected_forward_sha256)
