@@ -37,7 +37,7 @@ def torch_compile_linear_cross_entropy_apply(
         logits = logits + bias
 
     if softcap is not None:
-        logits = softcapping(logits, softcap)
+        logits = softcapping(logits.float(), softcap)
 
     loss = F.cross_entropy(logits.float(), targets, ignore_index=ignore_index, reduction=reduction)
 
