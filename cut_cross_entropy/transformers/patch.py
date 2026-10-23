@@ -240,9 +240,9 @@ def cce_patch(
             return patch_fn(model_type_or_model, patch_options, None)
         try:
             return patch_fn(model_type_or_model, patch_options, remote_model_id)
-        except Exception as remote_error:
-            # Remote code can lag behind transformers (removed APIs, missing deps, config
-            # validation); don't let it block patching the native class.
+        except ImportError as remote_error:
+            # Remote code can lag behind transformers (removed APIs, missing deps); don't let it
+            # block patching the native class.
             try:
                 result = patch_fn(model_type_or_model, patch_options, None)
             except ImportError:
