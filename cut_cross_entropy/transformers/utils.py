@@ -15,8 +15,6 @@ except ImportError:
         DTensor = None
         Shard = None
 
-from contextlib import contextmanager
-
 import torch.nn as nn
 
 from cut_cross_entropy import VocabParallelOptions, linear_cross_entropy
@@ -31,31 +29,6 @@ REMOTE_MODEL_NOT_IMPLEMENTED_ERROR = (
     "Please create an issue at https://github.com/axolotl-ai-cloud/axolotl/issues "
     "to request support for this model."
 )
-
-
-@contextmanager
-def init_empty_weights():
-    """
-    A context manager under which models are initialized with all parameters on the meta device,
-    therefore creating an empty model. Useful when just initializing the model would blow the available RAM.
-
-    This is a minimal implementation adapted from accelerate.init_empty_weights to avoid the accelerate dependency.
-    """
-    old_register_parameter = nn.Module.register_parameter
-
-    def register_empty_parameter(module, name, param):
-        old_register_parameter(module, name, param)
-        if param is not None:
-            param_cls = type(module._parameters[name])
-            kwargs = module._parameters[name].__dict__.copy()
-            kwargs["requires_grad"] = param.requires_grad
-            module._parameters[name] = param_cls(module._parameters[name].to("meta"), **kwargs)
-
-    try:
-        nn.Module.register_parameter = register_empty_parameter
-        yield
-    finally:
-        nn.Module.register_parameter = old_register_parameter
 
 
 class CCEKwargs(CCEPreset):
