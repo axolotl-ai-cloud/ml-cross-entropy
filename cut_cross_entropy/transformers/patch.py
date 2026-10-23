@@ -240,13 +240,18 @@ def cce_patch(
             return patch_fn(model_type_or_model, patch_options, None)
         try:
             return patch_fn(model_type_or_model, patch_options, remote_model_id)
-        except ImportError as e:
-            # Remote code can lag behind transformers (removed APIs, missing deps); don't let it
-            # block patching the native class.
+        except Exception as remote_error:
+            # Remote code can lag behind transformers (removed APIs, missing deps, config
+            # validation); don't let it block patching the native class.
+            try:
+                result = patch_fn(model_type_or_model, patch_options, None)
+            except ImportError:
+                # No native class to fall back to.
+                raise remote_error
             warnings.warn(
-                f"Could not load the remote code for {remote_model_id} ({e}). "
-                f"Patching the native transformers {model_type} class instead."
+                f"Could not load the remote code for {remote_model_id} ({remote_error!r}). "
+                f"Patched the native transformers {model_type} class instead."
             )
-            return patch_fn(model_type_or_model, patch_options, None)
+            return result
     else:
         return patch_fn(model_type_or_model, patch_options)
