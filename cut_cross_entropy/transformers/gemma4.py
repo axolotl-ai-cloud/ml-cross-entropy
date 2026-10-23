@@ -105,6 +105,7 @@ def cce_forward(
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         shared_kv_states=outputs.shared_kv_states,
+        router_logits=outputs.router_logits,
     )
 
 
@@ -198,6 +199,7 @@ def cce_forward_multimodal(
         image_hidden_states=outputs.image_hidden_states,
         audio_hidden_states=outputs.audio_hidden_states,
         shared_kv_states=outputs.shared_kv_states,
+        router_logits=outputs.router_logits,
     )
 
 
