@@ -1,4 +1,4 @@
-"""Cohere2Moe CCE patch. Adapted from transformers 5.17."""
+"""Cohere2Moe CCE patch. Adapted from transformers 5.20.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
