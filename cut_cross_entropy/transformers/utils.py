@@ -463,10 +463,36 @@ def apply_lce_lm_head(
     )
 
 
+def check_remote_forward_fingerprint(model_class: type, expected_sha256: str) -> None:
+    """Warn if a remote-code class's forward differs from the source the CCE patch was adapted from."""
+    import hashlib
+    import inspect
+    import textwrap
+    import warnings
+
+    try:
+        source = textwrap.dedent(inspect.getsource(model_class.forward))
+    except (OSError, TypeError):
+        warnings.warn(
+            f"Could not read the source of {model_class.__name__}.forward to verify the CCE patch."
+        )
+        return
+
+    actual_sha256 = hashlib.sha256(source.encode()).hexdigest()
+    if actual_sha256 != expected_sha256:
+        warnings.warn(
+            f"{model_class.__module__}.{model_class.__name__}.forward differs from the remote-code revision "
+            f"the CCE patch was adapted from (sha256 {actual_sha256[:12]} != {expected_sha256[:12]}). "
+            "The patch may be stale; please report it at "
+            "https://github.com/axolotl-ai-cloud/ml-cross-entropy/issues."
+        )
+
+
 def patch_remote_model_class(
     remote_model_id: str,
     class_name: str,
     patch_fn: Callable,
+    expected_forward_sha256: str | None = None,
 ) -> None:
     """
     Load a model class and patch a specific class method.
@@ -475,6 +501,8 @@ def patch_remote_model_class(
         remote_model_id: The HuggingFace model ID to load remote code from
         class_name: Name of the class to patch (e.g., "KimiLinearForCausalLM")
         patch_fn: Function to patch the class method (e.g., forward function)
+        expected_forward_sha256: Optional sha256 of the remote forward's source the patch was adapted
+            from; a warning is emitted if the loaded class's forward differs.
     """
     import importlib
 
@@ -500,6 +528,9 @@ def patch_remote_model_class(
 
         # get_class_in_module can be patched downstream (for ex: in Axolotl).
         model_class = get_class_in_module(class_name, module_name)
+
+    if expected_forward_sha256 is not None and model_class.forward is not patch_fn:
+        check_remote_forward_fingerprint(model_class, expected_forward_sha256)
 
     # Patch the forward method.
     setattr(model_class, "forward", patch_fn)
