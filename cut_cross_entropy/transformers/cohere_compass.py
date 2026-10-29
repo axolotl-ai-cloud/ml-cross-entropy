@@ -32,6 +32,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     patch_remote_model_class,
+    slice_logits_to_keep,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -66,22 +67,20 @@ def cce_forward(
     logits = None
     loss = None
 
-    slice_indices = (
-        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-    )
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
         # scale hidden_states by logit_scale in-place of logits
         loss = apply_lce_lm_head(
-            hidden_states[:, slice_indices, :] * self.logit_scale,
+            hidden_states * self.logit_scale,
             self.lm_head,
             labels,
             _PATCH_OPTS,
             **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states)
         logits = logits * self.logit_scale  # main diff from Llama
 
         if labels is not None:
@@ -142,14 +141,12 @@ def cce_forward_multimodal(
     logits = None
     loss = None
 
-    slice_indices = (
-        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-    )
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
         # scale hidden_states by logit_scale in-place of logits
-        lce_hidden_states = hidden_states[:, slice_indices, :]
+        lce_hidden_states = hidden_states
         if self.logit_scale is not None:
             lce_hidden_states = lce_hidden_states * self.logit_scale
 
@@ -161,7 +158,7 @@ def cce_forward_multimodal(
             **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states)
         if self.logit_scale is not None:
             logits = logits * self.logit_scale
 

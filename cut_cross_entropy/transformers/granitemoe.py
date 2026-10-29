@@ -32,6 +32,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     patch_remote_model_class,
+    slice_logits_to_keep,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -72,22 +73,20 @@ def cce_forward(
     hidden_states = outputs.last_hidden_state
     loss = None
     logits = None
-    slice_indices = (
-        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-    )
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
         # scale hidden_states by logit_scale in-place of logits
         loss = apply_lce_lm_head(
-            hidden_states[:, slice_indices, :] / self.config.logits_scaling,
+            hidden_states / self.config.logits_scaling,
             self.lm_head,
             labels,
             _PATCH_OPTS,
             **kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states)
         logits = logits / self.config.logits_scaling  # main diff from Llama
 
         if labels is not None:

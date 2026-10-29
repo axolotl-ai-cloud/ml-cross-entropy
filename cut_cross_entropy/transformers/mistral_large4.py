@@ -23,7 +23,6 @@ import torch
 import transformers
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.modeling_utils import slice_logits_to_keep
 from transformers.models.mistral_large4.modeling_mistral_large4 import (
     MistralLarge4CausalLMOutputWithPast,
 )
@@ -33,6 +32,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     patch_remote_model_class,
+    slice_logits_to_keep,
 )
 
 _PATCH_OPTS: PatchOptions | None = None

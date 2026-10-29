@@ -381,6 +381,25 @@ def _lora_lm_head_inputs(
     return e, c, bias, e2, c2
 
 
+def slice_logits_to_keep(
+    hidden_states: torch.Tensor, logits_to_keep: int | torch.Tensor
+) -> torch.Tensor:
+    """Copy of transformers' ``slice_logits_to_keep`` (added in 5.21), usable on older versions.
+
+    ``logits_to_keep`` is an int (keep the last N positions, ``0`` keeps all), a 1D tensor of
+    positions, a 2D integer ``(batch, positions)`` tensor, or a 2D bool ``(batch, seq)`` mask
+    (output flattened to ``(num_true, hidden)``).
+    """
+    if isinstance(logits_to_keep, torch.Tensor) and logits_to_keep.ndim == 2:
+        if logits_to_keep.dtype == torch.bool:
+            return hidden_states[logits_to_keep]
+        return torch.take_along_dim(hidden_states, logits_to_keep[..., None], dim=1)
+
+    if isinstance(logits_to_keep, int):
+        logits_to_keep = slice(-logits_to_keep, None)
+    return hidden_states[:, logits_to_keep, :]
+
+
 def apply_lce_lm_head(
     e: torch.Tensor,
     lm_head: nn.Module,
