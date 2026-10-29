@@ -30,6 +30,7 @@ from cut_cross_entropy.transformers.utils import (
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
     load_remote_model_class,
+    slice_logits_to_keep,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -157,10 +158,7 @@ def cce_forward_step3p7(
     )
 
     hidden_states = outputs[0]
-    slice_indices = (
-        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-    )
-    hidden_states = hidden_states[:, slice_indices, :]
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     loss = None
     logits = None

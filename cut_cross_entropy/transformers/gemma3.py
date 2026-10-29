@@ -37,6 +37,7 @@ from cut_cross_entropy.transformers.utils import (
     TransformersModelT,
     apply_lce_lm_head,
     patch_remote_model_class,
+    slice_logits_to_keep,
 )
 
 _PATCH_OPTS: PatchOptions | None = None
@@ -72,15 +73,12 @@ def cce_forward(
     loss = None
     logits = None
 
-    # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-    slice_indices = (
-        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-    )
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
         loss = apply_lce_lm_head(
-            hidden_states[:, slice_indices, :],
+            hidden_states,
             self.lm_head,
             labels,
             _PATCH_OPTS,
@@ -88,7 +86,7 @@ def cce_forward(
             **loss_kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states)
         if self.config.final_logit_softcapping is not None:
             logits = logits / self.config.final_logit_softcapping
             logits = torch.tanh(logits)
@@ -143,15 +141,12 @@ def cce_forward_multimodal(
     loss = None
     logits = None
 
-    # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-    slice_indices = (
-        slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
-    )
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
         loss = apply_lce_lm_head(
-            hidden_states[:, slice_indices, :],
+            hidden_states,
             self.lm_head,
             labels,
             _PATCH_OPTS,
@@ -160,7 +155,7 @@ def cce_forward_multimodal(
             **lm_kwargs,
         )
     else:
-        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = self.lm_head(hidden_states)
         if labels is not None:
             loss = self.loss_function(
                 logits=logits,
