@@ -1,4 +1,4 @@
-"""HunYuan V1 CCE patch. Dense inherits Llama; MoE inherits DeepseekV2. Adapted from transformers 5.20.1."""
+"""HunYuan V1 CCE patch. Dense inherits Llama; MoE inherits DeepseekV2. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

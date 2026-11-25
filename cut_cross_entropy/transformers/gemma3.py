@@ -1,4 +1,4 @@
-"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 5.20.1."""
+"""Gemma2 and Gemma3 (text and multimodal) CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -31,6 +31,7 @@ from transformers.models.gemma3.modeling_gemma3 import (
     Gemma3CausalLMOutputWithPast,
     Gemma3ModelOutputWithPast,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -43,12 +44,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward(
     self,
     input_ids: torch.LongTensor | None = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -63,7 +65,7 @@ def cce_forward(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         **loss_kwargs,
@@ -98,19 +100,20 @@ def cce_forward(
     return CausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: torch.LongTensor | None = None,
     pixel_values: torch.FloatTensor | None = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
+    cache: Optional[Union[list[torch.FloatTensor], Cache]] = None,
     token_type_ids: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -128,7 +131,7 @@ def cce_forward_multimodal(
         token_type_ids=token_type_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         labels=labels,
@@ -167,10 +170,10 @@ def cce_forward_multimodal(
     return Gemma3CausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=outputs.image_hidden_states,
+        image_outputs=outputs.image_outputs,
     )
 
 

@@ -1,4 +1,4 @@
-"""Qwen2.5 VL CCE patch. Adapted from transformers 5.20.1."""
+"""Qwen2.5 VL CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,10 +22,11 @@ from typing import Optional, Tuple, Union
 import torch
 import transformers
 from transformers.cache_utils import Cache
-from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
-    Qwen2_5_VLCausalLMOutputWithPast,
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPooling,
+    MultimodalCausalLMOutputWithPast,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -38,12 +39,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -56,7 +58,7 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
-) -> Union[Tuple, Qwen2_5_VLCausalLMOutputWithPast]:
+) -> Union[Tuple, MultimodalCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
@@ -70,7 +72,7 @@ def cce_forward_multimodal(
         mm_token_type_ids=mm_token_type_ids,
         position_ids=position_ids,
         attention_mask=attention_mask,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         mm_encoder_outputs=mm_encoder_outputs,
@@ -103,13 +105,14 @@ def cce_forward_multimodal(
                 **kwargs,
             )
 
-    return Qwen2_5_VLCausalLMOutputWithPast(
+    return MultimodalCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        rope_deltas=outputs.rope_deltas,
+        image_outputs=outputs.image_outputs,
+        video_outputs=outputs.video_outputs,
     )
 
 

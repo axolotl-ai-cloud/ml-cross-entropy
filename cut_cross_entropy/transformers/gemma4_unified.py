@@ -1,4 +1,4 @@
-"""Gemma4Unified (text and multimodal) CCE patch. Adapted from transformers 5.20.1."""
+"""Gemma4Unified (text and multimodal) CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -26,6 +26,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.gemma4_unified.modeling_gemma4_unified import (
     Gemma4UnifiedCausalLMOutputWithPast,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -38,12 +39,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -57,9 +59,10 @@ def cce_forward(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
+        logits_to_keep=logits_to_keep,
         **kwargs,
     )
 
@@ -67,7 +70,9 @@ def cce_forward(
     loss = None
     logits = None
 
-    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
+    # The model already sliced to logits_to_keep if it skipped positions in the KV-shared layers.
+    if hidden_states.shape[1] == (input_ids if input_ids is not None else inputs_embeds).shape[1]:
+        hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -92,13 +97,14 @@ def cce_forward(
     return Gemma4UnifiedCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         shared_kv_states=outputs.shared_kv_states,
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
@@ -111,7 +117,7 @@ def cce_forward_multimodal(
     image_position_ids: Optional[torch.LongTensor] = None,
     video_position_ids: Optional[torch.LongTensor] = None,
     num_frames_per_video: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Union[list[torch.FloatTensor], Cache]] = None,
+    cache: Optional[Union[list[torch.FloatTensor], Cache]] = None,
     mm_token_type_ids: Optional[torch.LongTensor] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -131,14 +137,16 @@ def cce_forward_multimodal(
         attention_mask=attention_mask,
         input_features_mask=input_features_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         mm_token_type_ids=mm_token_type_ids,
         inputs_embeds=inputs_embeds,
         labels=labels,
         use_cache=use_cache,
         image_position_ids=image_position_ids,
         video_position_ids=video_position_ids,
+        num_frames_per_video=num_frames_per_video,
         mm_encoder_outputs=mm_encoder_outputs,
+        logits_to_keep=logits_to_keep,
         return_dict=True,
         **lm_kwargs,
     )
@@ -147,7 +155,9 @@ def cce_forward_multimodal(
     loss = None
     logits = None
 
-    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
+    # The model already sliced to logits_to_keep if it skipped positions in the KV-shared layers.
+    if hidden_states.shape[1] == (input_ids if input_ids is not None else inputs_embeds).shape[1]:
+        hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -176,11 +186,10 @@ def cce_forward_multimodal(
     return Gemma4UnifiedCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=outputs.image_hidden_states,
-        audio_hidden_states=outputs.audio_hidden_states,
+        image_outputs=outputs.image_outputs,
         shared_kv_states=outputs.shared_kv_states,
     )
 

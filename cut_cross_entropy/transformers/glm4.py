@@ -1,4 +1,4 @@
-"""GLM 4 CCE patch. Glm/Glm4 inherit Llama; Glm4Moe inherits DeepseekV3 (DeepseekV2). Adapted from transformers 5.20.1."""
+"""GLM 4 CCE patch. Glm/Glm4 inherit Llama; Glm4Moe inherits DeepseekV3 (DeepseekV2). Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

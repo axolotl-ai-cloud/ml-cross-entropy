@@ -1,6 +1,6 @@
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import Any, Callable, TypeVar
 
 import torch
 import transformers
@@ -398,6 +398,12 @@ def slice_logits_to_keep(
     if isinstance(logits_to_keep, int):
         logits_to_keep = slice(-logits_to_keep, None)
     return hidden_states[:, logits_to_keep, :]
+
+
+def pop_cache_kwarg(kwargs: dict[str, Any], legacy_cache: Any) -> Any:
+    """transformers>=5.24 ``generate()`` passes the cache as ``cache=``; remote-code forwards still use the legacy name."""
+    cache = kwargs.pop("cache", None)
+    return legacy_cache if cache is None else cache
 
 
 def apply_lce_lm_head(

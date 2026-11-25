@@ -1,4 +1,4 @@
-"""Cohere2 Vision CCE patch. Adapted from transformers 5.20.1."""
+"""Cohere2 Vision CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -25,6 +25,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.cohere2_vision.modeling_cohere2_vision import (
     Cohere2VisionCausalLMOutputWithPast,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -37,13 +38,14 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: torch.LongTensor | None = None,
     pixel_values: torch.FloatTensor | None = None,
     attention_mask: torch.Tensor | None = None,
     position_ids: torch.LongTensor | None = None,
-    past_key_values: Cache | None = None,
+    cache: Cache | None = None,
     inputs_embeds: torch.FloatTensor | None = None,
     labels: torch.LongTensor | None = None,
     use_cache: bool | None = None,
@@ -60,7 +62,7 @@ def cce_forward_multimodal(
         pixel_values=pixel_values,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         image_sizes=image_sizes,
@@ -97,10 +99,10 @@ def cce_forward_multimodal(
     return Cohere2VisionCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=outputs.image_hidden_states,
+        image_outputs=outputs.image_outputs,
     )
 
 

@@ -1,4 +1,4 @@
-"""Qwen3_5 MoE CCE patch. CausalLM inherits Qwen3Next (Mixtral), ConditionalGeneration inherits Qwen3VLMoe. Adapted from transformers 5.20.1."""
+"""Qwen3_5 MoE CCE patch. CausalLM inherits Qwen3Next (Mixtral), ConditionalGeneration inherits Qwen3VLMoe. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

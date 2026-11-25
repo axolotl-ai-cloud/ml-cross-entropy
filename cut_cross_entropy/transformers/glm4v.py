@@ -1,4 +1,4 @@
-"""GLM4V CCE patch. Adapted from transformers 5.20.1."""
+"""GLM4V CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -21,14 +21,13 @@ from typing import Optional, Union
 
 import torch
 import transformers
-from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.models.glm4v.modeling_glm4v import (
-    Glm4vCausalLMOutputWithPast,
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPooling,
+    MultimodalCausalLMOutputWithPast,
+    MultimodalMoeCausalLMOutputWithPast,
 )
-from transformers.models.glm4v_moe.modeling_glm4v_moe import (
-    Glm4vMoeCausalLMOutputWithPast,
-    load_balancing_loss_func,
-)
+from transformers.models.glm4v_moe.modeling_glm4v_moe import load_balancing_loss_func
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -41,12 +40,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[list[torch.FloatTensor]] = None,
+    cache: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     pixel_values: Optional[torch.Tensor] = None,
@@ -57,7 +57,7 @@ def cce_forward_multimodal(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
-) -> Union[tuple, Glm4vCausalLMOutputWithPast]:
+) -> Union[tuple, MultimodalCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
@@ -70,7 +70,7 @@ def cce_forward_multimodal(
         mm_token_type_ids=mm_token_type_ids,
         position_ids=position_ids,
         attention_mask=attention_mask,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         mm_encoder_outputs=mm_encoder_outputs,
         **kwargs,
@@ -102,22 +102,24 @@ def cce_forward_multimodal(
                 **kwargs,
             )
 
-    return Glm4vCausalLMOutputWithPast(
+    return MultimodalCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        rope_deltas=outputs.rope_deltas,
+        image_outputs=outputs.image_outputs,
+        video_outputs=outputs.video_outputs,
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal_moe(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[list[torch.FloatTensor]] = None,
+    cache: Optional[list[torch.FloatTensor]] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     pixel_values: Optional[torch.Tensor] = None,
@@ -129,7 +131,7 @@ def cce_forward_multimodal_moe(
     logits_to_keep: Union[int, torch.Tensor] = 0,
     mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
     **kwargs,
-) -> Union[tuple, Glm4vMoeCausalLMOutputWithPast]:
+) -> Union[tuple, MultimodalMoeCausalLMOutputWithPast]:
     # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
     kwargs.pop("return_dict", None)
 
@@ -147,7 +149,7 @@ def cce_forward_multimodal_moe(
         video_grid_thw=video_grid_thw,
         position_ids=position_ids,
         attention_mask=attention_mask,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         mm_token_type_ids=mm_token_type_ids,
         mm_encoder_outputs=mm_encoder_outputs,
@@ -194,14 +196,15 @@ def cce_forward_multimodal_moe(
                 loss.device
             )  # make sure to reside in the same device
 
-    return Glm4vMoeCausalLMOutputWithPast(
+    return MultimodalMoeCausalLMOutputWithPast(
         loss=loss,
         aux_loss=aux_loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        rope_deltas=outputs.rope_deltas,
+        image_outputs=outputs.image_outputs,
+        video_outputs=outputs.video_outputs,
         router_logits=outputs.router_logits,
     )
 

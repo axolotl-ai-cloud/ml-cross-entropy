@@ -1,4 +1,4 @@
-"""Afmoe CCE patch. Adapted from transformers 5.20.1 and arcee-ai/Trinity-Nano-Preview revision b576b32 (remote code)."""
+"""Afmoe CCE patch. Adapted from transformers 5.24.1 and arcee-ai/Trinity-Nano-Preview revision b576b32 (remote code)."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -22,6 +22,7 @@ from typing import Callable, Optional, Union
 import torch
 import transformers
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -29,6 +30,7 @@ from cut_cross_entropy.transformers.utils import (
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
     load_remote_model_class,
+    pop_cache_kwarg,
     slice_logits_to_keep,
 )
 
@@ -52,6 +54,7 @@ def cce_forward_afmoe_remote(
     token_type_ids: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> Union[tuple, MoeCausalLMOutputWithPast]:
+    past_key_values = pop_cache_kwarg(kwargs, past_key_values)
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,
@@ -96,12 +99,13 @@ def cce_forward_afmoe_remote(
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_afmoe(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values=None,
+    cache=None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -122,7 +126,7 @@ def cce_forward_afmoe(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         output_router_logits=output_router_logits,
@@ -155,7 +159,7 @@ def cce_forward_afmoe(
     return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         router_logits=outputs.router_logits,

@@ -1,4 +1,4 @@
-"""CohereCompass CCE patch. Adapted from transformers 5.20.1."""
+"""CohereCompass CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -25,7 +25,9 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     BaseModelOutputWithPooling,
     CausalLMOutputWithPast,
+    MultimodalCausalLMOutputWithPast,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -38,12 +40,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward(
     self,
     input_ids: torch.LongTensor | None = None,
     attention_mask: torch.Tensor | None = None,
     position_ids: torch.LongTensor | None = None,
-    past_key_values: Cache | None = None,
+    cache: Cache | None = None,
     inputs_embeds: torch.FloatTensor | None = None,
     labels: torch.LongTensor | None = None,
     use_cache: bool | None = None,
@@ -57,7 +60,7 @@ def cce_forward(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         **kwargs,
@@ -94,18 +97,19 @@ def cce_forward(
     return CausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: torch.LongTensor | None = None,
     attention_mask: torch.Tensor | None = None,
     position_ids: torch.LongTensor | None = None,
-    past_key_values: Cache | None = None,
+    cache: Cache | None = None,
     inputs_embeds: torch.FloatTensor | None = None,
     labels: torch.LongTensor | None = None,
     pixel_values: torch.Tensor | None = None,
@@ -130,7 +134,7 @@ def cce_forward_multimodal(
         mm_token_type_ids=mm_token_type_ids,
         position_ids=position_ids,
         attention_mask=attention_mask,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         mm_encoder_outputs=mm_encoder_outputs,
@@ -170,12 +174,14 @@ def cce_forward_multimodal(
                 **kwargs,
             )
 
-    return CausalLMOutputWithPast(
+    return MultimodalCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
+        image_outputs=outputs.image_outputs,
+        video_outputs=outputs.video_outputs,
     )
 
 

@@ -1,4 +1,4 @@
-"""Qwen3_5 CCE patch. CausalLM inherits Qwen3 (Llama), ConditionalGeneration inherits Qwen3VL. Adapted from transformers 5.20.1."""
+"""Qwen3_5 CCE patch. CausalLM inherits Qwen3 (Llama), ConditionalGeneration inherits Qwen3VL. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,11 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 from types import MethodType
 
 import transformers
-from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5CausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -30,13 +28,8 @@ from cut_cross_entropy.transformers.utils import (
 
 from . import qwen3_vl as qwen3_vl_patch
 
-
-# Same forward body as Qwen3VL's but a distinct output dataclass (same fields), so re-box.
-@functools.wraps(qwen3_vl_patch.cce_forward_multimodal)
-def cce_forward_multimodal(self, *args, **kwargs) -> Qwen3_5CausalLMOutputWithPast:
-    return Qwen3_5CausalLMOutputWithPast(
-        **qwen3_vl_patch.cce_forward_multimodal(self, *args, **kwargs)
-    )
+# Same forward body and output dataclass as Qwen3VL's.
+cce_forward_multimodal = qwen3_vl_patch.cce_forward_multimodal
 
 
 def patch_qwen3_5_text(
