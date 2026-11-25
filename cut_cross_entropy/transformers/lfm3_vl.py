@@ -1,0 +1,139 @@
+"""Lfm3VL CCE patch. Adapted from transformers 5.24.1."""
+
+# Copyright (C) 2024 Apple Inc. All Rights Reserved.
+
+# Copyright 2024 Axolotl AI. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from types import MethodType
+from typing import Optional, Union
+
+import torch
+import transformers
+from transformers.cache_utils import Cache
+from transformers.modeling_outputs import BaseModelOutputWithPooling
+from transformers.models.lfm3_vl.modeling_lfm3_vl import Lfm3VlCausalLMOutputWithPast
+from transformers.utils.deprecation import deprecate_kwarg
+
+from cut_cross_entropy.transformers.utils import (
+    PatchOptions,
+    TransformersModelT,
+    apply_lce_lm_head,
+    patch_remote_model_class,
+    slice_logits_to_keep,
+)
+
+_PATCH_OPTS: PatchOptions | None = None
+
+
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
+def cce_forward_multimodal(
+    self,
+    input_ids: Optional[torch.LongTensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    cache: Optional[Cache] = None,
+    inputs_embeds: Optional[torch.FloatTensor] = None,
+    pixel_values: Optional[torch.FloatTensor] = None,
+    image_grid_thw: Optional[torch.LongTensor] = None,
+    pixel_values_videos: Optional[torch.FloatTensor] = None,
+    video_grid_thw: Optional[torch.LongTensor] = None,
+    labels: Optional[torch.LongTensor] = None,
+    use_cache: Optional[bool] = None,
+    logits_to_keep: Union[int, torch.Tensor] = 0,
+    mm_encoder_outputs: Optional[dict[str, BaseModelOutputWithPooling]] = None,
+    **kwargs,
+) -> Union[tuple, Lfm3VlCausalLMOutputWithPast]:
+    # Strip PEFT-injected return_dict so it can't leak into self.model and force a tuple return.
+    kwargs.pop("return_dict", None)
+
+    outputs = self.model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        cache=cache,
+        inputs_embeds=inputs_embeds,
+        pixel_values=pixel_values,
+        image_grid_thw=image_grid_thw,
+        pixel_values_videos=pixel_values_videos,
+        video_grid_thw=video_grid_thw,
+        use_cache=use_cache,
+        mm_encoder_outputs=mm_encoder_outputs,
+        **kwargs,
+    )
+
+    hidden_states = outputs[0]
+    loss = None
+    logits = None
+
+    hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
+
+    if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
+        assert labels is not None
+        loss = apply_lce_lm_head(
+            hidden_states,
+            self.lm_head,
+            labels,
+            _PATCH_OPTS,
+            **kwargs,
+        )
+    else:
+        logits = self.lm_head(hidden_states)
+
+        if labels is not None:
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.text_config.vocab_size,
+                **kwargs,
+            )
+
+    return Lfm3VlCausalLMOutputWithPast(
+        loss=loss,
+        logits=logits,
+        cache=outputs.cache,
+        hidden_states=outputs.hidden_states,
+        attentions=outputs.attentions,
+        image_outputs=outputs.image_outputs,
+        video_outputs=outputs.video_outputs,
+    )
+
+
+def patch_lfm3_vl(
+    maybe_model: TransformersModelT | str | transformers.PretrainedConfig,
+    patch_options: PatchOptions,
+    remote_model_id: str | None = None,
+) -> TransformersModelT | None:
+    global _PATCH_OPTS
+    _PATCH_OPTS = patch_options
+
+    if remote_model_id is not None:
+        patch_remote_model_class(
+            remote_model_id=remote_model_id,
+            class_name="Lfm3VlForConditionalGeneration",
+            patch_fn=cce_forward_multimodal,
+        )
+        return None
+
+    from transformers.models.lfm3_vl import modeling_lfm3_vl
+
+    if isinstance(maybe_model, transformers.PreTrainedModel):
+        assert isinstance(maybe_model, modeling_lfm3_vl.Lfm3VlForConditionalGeneration), (
+            f"Expected a Lfm3VlForConditionalGeneration model. Got {type(maybe_model)}."
+        )
+        maybe_model.forward = MethodType(cce_forward_multimodal, maybe_model)
+        return maybe_model
+
+    modeling_lfm3_vl.Lfm3VlForConditionalGeneration.forward = cce_forward_multimodal
+    return None
