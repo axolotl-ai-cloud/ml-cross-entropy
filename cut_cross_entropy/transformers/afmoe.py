@@ -30,6 +30,7 @@ from cut_cross_entropy.transformers.utils import (
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
     load_remote_model_class,
+    pop_cache_kwarg,
     slice_logits_to_keep,
 )
 
@@ -53,6 +54,7 @@ def cce_forward_afmoe_remote(
     token_type_ids: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> Union[tuple, MoeCausalLMOutputWithPast]:
+    past_key_values = pop_cache_kwarg(kwargs, past_key_values)
     outputs = self.model(
         input_ids=input_ids,
         attention_mask=attention_mask,

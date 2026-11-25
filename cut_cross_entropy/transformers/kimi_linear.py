@@ -31,6 +31,7 @@ from cut_cross_entropy.transformers.utils import (
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
     load_remote_model_class,
+    pop_cache_kwarg,
     slice_logits_to_keep,
 )
 
@@ -56,6 +57,7 @@ def cce_forward_kimi_remote(
     cache_position: Optional[torch.LongTensor] = None,
     **kwargs,
 ) -> Union[tuple, CausalLMOutputWithPast]:
+    past_key_values = pop_cache_kwarg(kwargs, past_key_values)
     output_attentions = (
         output_attentions if output_attentions is not None else self.config.output_attentions
     )

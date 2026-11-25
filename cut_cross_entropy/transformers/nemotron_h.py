@@ -34,6 +34,7 @@ from cut_cross_entropy.transformers.utils import (
     apply_lce_lm_head,
     check_remote_forward_fingerprint,
     load_remote_model_class,
+    pop_cache_kwarg,
     slice_logits_to_keep,
 )
 
@@ -120,6 +121,7 @@ def cce_forward_nemotron_h_remote_nano(
     attention_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> Union[tuple, ModelOutput]:
+    cache_params = pop_cache_kwarg(kwargs, cache_params)
     output_attentions = (
         output_attentions if output_attentions is not None else self.config.output_attentions
     )
@@ -198,6 +200,7 @@ def cce_forward_nemotron_h_remote_super(
     attention_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> Union[tuple, ModelOutput]:
+    past_key_values = pop_cache_kwarg(kwargs, past_key_values)
     output_attentions = (
         output_attentions if output_attentions is not None else self.config.output_attentions
     )
