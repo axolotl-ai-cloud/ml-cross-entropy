@@ -1,4 +1,4 @@
-"""NemotronH CCE patch. Adapted from transformers 5.20.1 and nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 revision bf77c31 / nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16 revision 2dc98e2 (remote code)."""
+"""NemotronH CCE patch. Adapted from transformers 5.24.1 and nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 revision bf77c31 / nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16 revision 2dc98e2 (remote code)."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -26,6 +26,7 @@ import transformers
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import MoeCausalLMOutputWithPast
 from transformers.utils import ModelOutput
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -45,12 +46,13 @@ _REMOTE_NANO_FORWARD_SHA256 = "dc7a2c7bc204b37f9b68f38af0db3c9b9ed3e8ac3abe95371
 _REMOTE_SUPER_FORWARD_SHA256 = "d961f2b7868516fc7ed981ef2ba3162b93f6e33b3e212149d6dc2db53d19d79a"
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_nemotron_h(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values=None,
+    cache=None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -64,7 +66,7 @@ def cce_forward_nemotron_h(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         **kwargs,
@@ -96,7 +98,7 @@ def cce_forward_nemotron_h(
     return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         router_logits=outputs.router_logits,

@@ -1,4 +1,4 @@
-"""Step3p7 CCE patch. Adapted from transformers 5.20.1 and stepfun-ai/Step-3.7-Flash revision 5f62440 (remote code)."""
+"""Step3p7 CCE patch. Adapted from transformers 5.24.1 and stepfun-ai/Step-3.7-Flash revision 5f62440 (remote code)."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -23,6 +23,7 @@ from typing import Callable, Optional, Union
 import torch
 import transformers
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -122,6 +123,7 @@ def cce_forward_step3p7_remote(
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_step3p7(
     self,
     input_ids: Optional[torch.LongTensor] = None,
@@ -130,7 +132,7 @@ def cce_forward_step3p7(
     num_local_patches: Optional[Union[list[int], torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values=None,
+    cache=None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -150,7 +152,7 @@ def cce_forward_step3p7(
         num_local_patches=num_local_patches,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         mm_encoder_outputs=mm_encoder_outputs,
@@ -186,10 +188,10 @@ def cce_forward_step3p7(
     return Step3p7CausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=outputs.image_hidden_states,
+        image_outputs=outputs.image_outputs,
         router_logits=outputs.router_logits,
     )
 

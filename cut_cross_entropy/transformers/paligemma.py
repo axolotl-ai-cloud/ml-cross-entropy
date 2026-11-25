@@ -1,4 +1,4 @@
-"""PaliGemma CCE patch. Adapted from transformers 5.20.1."""
+"""PaliGemma CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -23,6 +23,7 @@ import transformers
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.paligemma.modeling_paligemma import PaliGemmaCausalLMOutputWithPast
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -35,13 +36,14 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward(
     self,
     input_ids: torch.LongTensor | None = None,
     pixel_values: torch.FloatTensor | None = None,
     attention_mask: torch.Tensor | None = None,
     position_ids: torch.LongTensor | None = None,
-    past_key_values: Cache | None = None,
+    cache: Cache | None = None,
     token_type_ids: torch.LongTensor | None = None,
     inputs_embeds: torch.FloatTensor | None = None,
     labels: torch.LongTensor | None = None,
@@ -59,7 +61,7 @@ def cce_forward(
         token_type_ids=token_type_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         mm_encoder_outputs=mm_encoder_outputs,
@@ -71,6 +73,9 @@ def cce_forward(
     logits = None
 
     hidden_states = slice_logits_to_keep(hidden_states, logits_to_keep)
+    final_logit_softcapping = getattr(
+        self.config.get_text_config(), "final_logit_softcapping", None
+    )
 
     if _PATCH_OPTS is not None and _PATCH_OPTS.use_lce(labels, self.training):
         assert labels is not None
@@ -79,10 +84,15 @@ def cce_forward(
             self.lm_head,
             labels,
             _PATCH_OPTS,
+            softcap=final_logit_softcapping,
             **kwargs,
         )
     else:
         logits = self.lm_head(hidden_states)
+        if final_logit_softcapping is not None:
+            logits = logits / final_logit_softcapping
+            logits = torch.tanh(logits)
+            logits = logits * final_logit_softcapping
 
         if labels is not None:
             loss = self.loss_function(
@@ -95,10 +105,10 @@ def cce_forward(
     return PaliGemmaCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=outputs.image_hidden_states,
+        image_outputs=outputs.image_outputs,
     )
 
 

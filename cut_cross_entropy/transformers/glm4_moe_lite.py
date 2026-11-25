@@ -1,4 +1,4 @@
-"""GLM4 MoE Lite CCE patch. Glm4MoeLite inherits Glm4Moe (DeepseekV2). Adapted from transformers 5.20.1."""
+"""GLM4 MoE Lite CCE patch. Glm4MoeLite inherits Glm4Moe (DeepseekV2). Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

@@ -1,4 +1,4 @@
-"""Lfm2Moe CCE patch. Lfm2Moe inherits DeepseekV2. Adapted from transformers 5.20.1."""
+"""Lfm2Moe CCE patch. Lfm2Moe inherits DeepseekV2. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 

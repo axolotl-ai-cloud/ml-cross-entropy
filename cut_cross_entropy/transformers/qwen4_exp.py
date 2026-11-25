@@ -1,4 +1,4 @@
-"""Qwen4Exp (text and multimodal) CCE patch. CausalLM inherits Mixtral. Adapted from transformers 5.20.1."""
+"""Qwen4Exp (text and multimodal) CCE patch. CausalLM inherits Mixtral. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -27,6 +27,7 @@ from transformers.models.qwen4_exp.modeling_qwen4_exp import (
     Qwen4ExpCausalLMOutputWithPast,
     load_balancing_loss_func,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -39,12 +40,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: torch.LongTensor = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     pixel_values: Optional[torch.Tensor] = None,
@@ -75,7 +77,7 @@ def cce_forward_multimodal(
         mm_token_type_ids=mm_token_type_ids,
         position_ids=position_ids,
         attention_mask=attention_mask,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         mm_encoder_outputs=mm_encoder_outputs,
         output_router_logits=output_router_logits,
@@ -125,10 +127,11 @@ def cce_forward_multimodal(
         loss=loss,
         aux_loss=aux_loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        rope_deltas=outputs.rope_deltas,
+        image_outputs=outputs.image_outputs,
+        video_outputs=outputs.video_outputs,
         router_logits=outputs.router_logits,
     )
 

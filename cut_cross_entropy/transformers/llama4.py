@@ -1,4 +1,4 @@
-"""Llama4 CCE patch. Adapted from transformers 5.20.1."""
+"""Llama4 CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -26,6 +26,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling, MoeCausalL
 from transformers.models.llama4.modeling_llama4 import (
     Llama4CausalLMOutputWithPast,
 )
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -38,12 +39,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -58,7 +60,7 @@ def cce_forward(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         **kwargs,
@@ -95,20 +97,21 @@ def cce_forward(
     return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         router_logits=outputs.router_logits,
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     pixel_values: Optional[torch.FloatTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     vision_feature_select_strategy: Optional[str] = None,
     labels: Optional[torch.LongTensor] = None,
@@ -169,7 +172,7 @@ def cce_forward_multimodal(
     outputs = self.language_model(
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         output_attentions=output_attentions,
@@ -208,10 +211,10 @@ def cce_forward_multimodal(
     output = Llama4CausalLMOutputWithPast(
         loss=loss,
         logits=logits,  # type: ignore  # TODO: check if need to create dummy logits
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=image_features if mm_encoder_outputs.get("image") is not None else None,
+        image_outputs=mm_encoder_outputs.get("image"),
         router_logits=outputs.router_logits,
     )
     return output if return_dict else output.to_tuple()

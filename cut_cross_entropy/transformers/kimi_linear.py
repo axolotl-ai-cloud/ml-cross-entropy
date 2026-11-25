@@ -1,4 +1,4 @@
-"""Kimi Linear CCE patch. Adapted from transformers 5.20.1 and moonshotai/Kimi-Linear-48B-A3B-Instruct revision e1df551 (remote code)."""
+"""Kimi Linear CCE patch. Adapted from transformers 5.24.1 and moonshotai/Kimi-Linear-48B-A3B-Instruct revision e1df551 (remote code)."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -23,6 +23,7 @@ import torch
 import transformers
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import CausalLMOutputWithPast, MoeCausalLMOutputWithPast
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -110,12 +111,13 @@ def cce_forward_kimi_remote(
     )
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_kimi(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     labels: Optional[torch.LongTensor] = None,
     use_cache: Optional[bool] = None,
@@ -128,7 +130,7 @@ def cce_forward_kimi(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         use_cache=use_cache,
         **kwargs,
@@ -160,7 +162,7 @@ def cce_forward_kimi(
     return MoeCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
         router_logits=outputs.router_logits,

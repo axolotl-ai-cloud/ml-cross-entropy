@@ -1,4 +1,4 @@
-"""GLM46V CCE patch. Adapted from transformers 5.20.1."""
+"""GLM46V CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -16,11 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 from types import MethodType
 
 import transformers
-from transformers.models.glm46v.modeling_glm46v import Glm46VCausalLMOutputWithPast
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -30,13 +28,8 @@ from cut_cross_entropy.transformers.utils import (
 
 from . import glm4v as glm4v_patch
 
-
-# GLM46V's forward body matches GLM4V's but returns its own output dataclass (same fields,
-# unrelated type), so re-box rather than duplicating the forward.
-@functools.wraps(glm4v_patch.cce_forward_multimodal)
-def cce_forward_multimodal(self, *args, **kwargs) -> Glm46VCausalLMOutputWithPast:
-    outputs = glm4v_patch.cce_forward_multimodal(self, *args, **kwargs)
-    return Glm46VCausalLMOutputWithPast(**outputs)
+# Same forward body and output dataclass as GLM4V's.
+cce_forward_multimodal = glm4v_patch.cce_forward_multimodal
 
 
 def patch_glm46v(

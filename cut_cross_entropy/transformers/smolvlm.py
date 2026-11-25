@@ -1,4 +1,4 @@
-"""SmolVLM CCE patch. Adapted from transformers 5.20.1."""
+"""SmolVLM CCE patch. Adapted from transformers 5.24.1."""
 
 # Copyright (C) 2024 Apple Inc. All Rights Reserved.
 
@@ -24,6 +24,7 @@ import transformers
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.smolvlm.modeling_smolvlm import SmolVLMCausalLMOutputWithPast
+from transformers.utils.deprecation import deprecate_kwarg
 
 from cut_cross_entropy.transformers.utils import (
     PatchOptions,
@@ -36,12 +37,13 @@ from cut_cross_entropy.transformers.utils import (
 _PATCH_OPTS: PatchOptions | None = None
 
 
+@deprecate_kwarg("past_key_values", "5.40.0", new_name="cache")
 def cce_forward_multimodal(
     self,
     input_ids: Optional[torch.LongTensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.LongTensor] = None,
-    past_key_values: Optional[Cache] = None,
+    cache: Optional[Cache] = None,
     inputs_embeds: Optional[torch.FloatTensor] = None,
     pixel_values: Optional[torch.FloatTensor] = None,
     pixel_attention_mask: Optional[torch.BoolTensor] = None,
@@ -58,7 +60,7 @@ def cce_forward_multimodal(
         input_ids=input_ids,
         attention_mask=attention_mask,
         position_ids=position_ids,
-        past_key_values=past_key_values,
+        cache=cache,
         inputs_embeds=inputs_embeds,
         pixel_values=pixel_values,
         pixel_attention_mask=pixel_attention_mask,
@@ -97,10 +99,10 @@ def cce_forward_multimodal(
     return SmolVLMCausalLMOutputWithPast(
         loss=loss,
         logits=logits,
-        past_key_values=outputs.past_key_values,
+        cache=outputs.cache,
         hidden_states=outputs.hidden_states,
         attentions=outputs.attentions,
-        image_hidden_states=outputs.image_hidden_states,
+        image_outputs=outputs.image_outputs,
     )
 
 
